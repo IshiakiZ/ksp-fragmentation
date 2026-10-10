@@ -1,0 +1,35 @@
+Fragmentation @VERSION@
+for Kerbal Space Program 1.12.x
+
+Crashes as they are: a craft that hits the ground breaks up from the parts that hit it. One
+that comes in at a slant slides and tumbles on along the ground, coming apart as it goes;
+split tanks leak for a moment and then go up; and every part that is destroyed falls apart
+into pieces of its own skin, which are solid and come to rest. Parts from other mods break
+up as the game's own do.
+
+INSTALL
+  Copy the three folders in this download's GameData (Keystone, VolumetricExplosions and
+  Fragmentation) into your KSP's GameData folder, and start the game. Keystone is the base
+  this mod stands on. Volumetric Explosions is not needed, but with it the explosions are
+  its fire and smoke, and leaks, burning pieces and the dust of a slide go into its air.
+  To remove the mod, delete the Fragmentation folder.
+
+USE
+  Nothing to do: crash something. The settings (how far a wreck slides, how tough parts are,
+  how many pieces there may be and for how long, leaks and fires, and switching it off) are
+  in the Keystone window: the keystone button on the game's toolbar, or Option-K on a Mac
+  and Alt-K elsewhere. Then turn to Fragmentation.
+
+GOOD TO KNOW
+  While a craft is close enough to the ground or to another craft to hit it at speed, its
+  parts' crash tolerance is raised (other mods that show it will show a very large number):
+  the mod decides itself what a blow does. A craft that touches down within its parts'
+  tolerances is not hurt, as in the game. What water does is left to the game.
+
+WHERE IT WORKS
+  Made and tried on a Mac. It has no shader of its own and nothing in it is particular to
+  a Mac, but it has not been run on Windows or Linux. The fire and smoke of Volumetric
+  Explosions are drawn by that mod's shader, which is made for OpenGL (a Mac, Linux); on
+  Windows that mod falls back to its own simpler look.
+
+Everything else: https://github.com/IshiakiZ/ksp-fragmentation
