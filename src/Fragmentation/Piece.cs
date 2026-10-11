@@ -24,6 +24,7 @@ namespace Fragmentation
         public static int MostOverride = -1;
         public static int Most => MostOverride >= 0 ? MostOverride : Mathf.RoundToInt(Frag.Most);
         static readonly HashSet<Collider> colliders = new HashSet<Collider>();
+        static readonly Stack<Piece> pool = new Stack<Piece>();
         static int ids;
         static PhysicMaterial surface;
 
@@ -35,8 +36,13 @@ namespace Fragmentation
         public int id;
         public Rigidbody rb;
         public BoxCollider box;
+        public MeshCollider hull;            // a big piece stands on the hull round its own shape (a curved panel or half a tank is not its box)
+        Mesh hullMesh;
         public MeshRenderer drawn;
+        public MeshFilter filter;
         public Mesh mesh;
+        /// <summary>What smoke it trails (see Crashes.Say): how much (0 to 1) and until when, how light and how brown.</summary>
+        public float smoke, smokeUntil, shade, warm;
         public physicalObject po;
         public float born, life, heat, burns, area, mass, reach;
         public bool resting, white;
@@ -54,41 +60,65 @@ namespace Fragmentation
                                  float heat, float burns, byte tint, bool white, Part from)
         {
             if (surface == null) surface = new PhysicMaterial("Fragmentation wreckage") { dynamicFriction = 0.55f, staticFriction = 0.75f, bounciness = 0.06f, frictionCombine = PhysicMaterialCombine.Average, bounceCombine = PhysicMaterialCombine.Minimum };
-            var go = new GameObject("Fragmentation piece");
             int final = Layers.Final, first = Layers.Spawn >= 0 ? Layers.Spawn : final;
+            Piece p = null;
+            // (one that has gone before, put back to use: making the objects afresh for every piece cost more than the rest of it)
+            while (pool.Count > 0 && p == null) p = pool.Pop();
+            if (p == null)
+            {
+                var go = new GameObject("Fragmentation piece");
+                go.AddComponent<MeshFilter>();
+                MeshRenderer r = go.AddComponent<MeshRenderer>();
+                r.receiveShadows = true;
+                var shape = new GameObject("Fragmentation piece collider");
+                shape.transform.SetParent(go.transform, false);
+                BoxCollider box0 = shape.AddComponent<BoxCollider>();
+                box0.sharedMaterial = surface;
+                Rigidbody rb0 = go.AddComponent<Rigidbody>();
+                rb0.useGravity = false;                                     // (the game's gravity, or ours: see Step)
+                rb0.drag = 0f;
+                rb0.angularDrag = 0.15f;
+                rb0.maxAngularVelocity = 40f;
+                // (pieces of one part start against each other: pushed apart gently, not flung)
+                rb0.maxDepenetrationVelocity = 1.5f;
+                p = go.AddComponent<Piece>();
+                p.rb = rb0; p.box = box0; p.drawn = r; p.filter = go.GetComponent<MeshFilter>();
+                // (the game's own kind of loose object: see the class's notes)
+                p.po = go.AddComponent<physicalObject>();
+                p.po.maxDistance = 2400f;
+                p.po.origDrag = 0f;
+                p.po.rb = rb0;
+            }
+            GameObject g = p.gameObject;
             // (what is drawn is on the craft's own layer from the first moment, which the cameras draw; the collider, on an
             // object of its own, starts on a layer that runs into the ground alone: see Layers)
-            go.layer = final;
-            go.transform.SetPositionAndRotation(at, turn);
-            go.AddComponent<MeshFilter>().sharedMesh = mesh;
-            MeshRenderer r = go.AddComponent<MeshRenderer>();
-            r.sharedMaterials = painted;
+            g.layer = final;
+            p.box.gameObject.layer = first;
+            g.transform.SetPositionAndRotation(at, turn);
+            g.transform.localScale = Vector3.one;
+            if (p.mesh != null && p.mesh != mesh) Destroy(p.mesh);
+            p.filter.sharedMesh = mesh;
+            p.drawn.sharedMaterials = painted;
+            p.drawn.SetPropertyBlock(null);
             // (the small ones cast no shadow: each piece that does is drawn again for every band of the sun's shadow it lies in)
-            r.shadowCastingMode = mesh.bounds.extents.magnitude >= ShadowsFrom ? UnityEngine.Rendering.ShadowCastingMode.On : UnityEngine.Rendering.ShadowCastingMode.Off;
-            r.receiveShadows = true;
+            p.drawn.shadowCastingMode = mesh.bounds.extents.magnitude >= ShadowsFrom ? UnityEngine.Rendering.ShadowCastingMode.On : UnityEngine.Rendering.ShadowCastingMode.Off;
             Bounds b = mesh.bounds;
-            var shape = new GameObject("Fragmentation piece collider") { layer = first };
-            shape.transform.SetParent(go.transform, false);
-            BoxCollider box = shape.AddComponent<BoxCollider>();
-            box.center = b.center;
+            p.box.center = b.center;
             // (a panel of skin is thinner than anything the physics can hold a box of: it is given some body)
-            box.size = new Vector3(Mathf.Max(b.size.x, 0.06f), Mathf.Max(b.size.y, 0.06f), Mathf.Max(b.size.z, 0.06f));
-            box.sharedMaterial = surface;
-            Rigidbody rb = go.AddComponent<Rigidbody>();
+            p.box.size = new Vector3(Mathf.Max(b.size.x, 0.06f), Mathf.Max(b.size.y, 0.06f), Mathf.Max(b.size.z, 0.06f));
+            bool shaped = b.extents.magnitude > 0.6f && p.Shape(mesh);
+            p.box.enabled = !shaped;
+            if (p.hull != null) p.hull.enabled = shaped;
+            g.SetActive(true);
+            Rigidbody rb = p.rb;
+            rb.isKinematic = false;
             rb.mass = Mathf.Max(0.002f, mass);
-            rb.useGravity = false;                                      // (the game's gravity, or ours: see Step)
-            rb.drag = 0f;
-            rb.angularDrag = 0.15f;
-            rb.maxAngularVelocity = 40f;
-            // (pieces of one part start against each other: pushed apart gently, not flung)
-            rb.maxDepenetrationVelocity = 1.5f;
             rb.interpolation = RigidbodyInterpolation.Interpolate;
             rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
             rb.velocity = velocity;
             rb.angularVelocity = spin;
-            Piece p = go.AddComponent<Piece>();
             p.id = ++ids;
-            p.rb = rb; p.box = box; p.drawn = r; p.mesh = mesh;
+            p.mesh = mesh;
             p.mass = rb.mass; p.area = area; p.heat = heat; p.burns = burns; p.tint = tint; p.white = white; p.from = from;
             p.reach = b.extents.magnitude;
             p.born = Time.time;
@@ -96,15 +126,46 @@ namespace Fragmentation
             p.finalLayer = final;
             p.layerUntil = Time.time + (first != final ? 0.35f : 0f);
             p.materials = painted.Length;
+            p.resting = false; p.still = 0f; p.fading = -1f; p.shownHeat = -1f;
+            p.scale = Vector3.one;
+            p.smoke = 0f; p.smokeUntil = 0f; p.shade = 0.4f; p.warm = 0.2f;
             p.SetTints(tints);
-            // (the game's own kind of loose object: see the class's notes)
-            p.po = go.AddComponent<physicalObject>();
-            p.po.maxDistance = 2400f;
-            p.po.origDrag = 0f;
-            p.po.rb = rb;
             all.Add(p);
-            colliders.Add(box);
+            colliders.Add(p.box);
+            if (p.hull != null) colliders.Add(p.hull);
             return p;
+        }
+
+        static readonly List<Vector3> shapePoints = new List<Vector3>();
+        static readonly List<int> shapeTris = new List<int>();
+
+        /// <summary>The hull round a big piece's own shape (some of its corners, and the same a few centimetres further along the way it faces, for body). False if it could not be made.</summary>
+        bool Shape(Mesh shape)
+        {
+            try
+            {
+                Vector3[] v = shape.vertices;
+                if (v == null || v.Length < 4) return false;
+                shapePoints.Clear();
+                int step = Mathf.Max(1, v.Length / 90);
+                for (int i = 0; i < v.Length; i += step) { shapePoints.Add(v[i]); shapePoints.Add(v[i] + Vector3.up * 0.04f); }
+                shapeTris.Clear();
+                for (int k = 0; k + 2 < shapePoints.Count; k += 3) { shapeTris.Add(k); shapeTris.Add(k + 1); shapeTris.Add(k + 2); }
+                if (hullMesh == null) hullMesh = new Mesh { name = "Fragmentation piece shape" };
+                hullMesh.Clear();
+                hullMesh.SetVertices(shapePoints);
+                hullMesh.SetTriangles(shapeTris, 0);
+                if (hull == null)
+                {
+                    hull = box.gameObject.AddComponent<MeshCollider>();
+                    hull.convex = true;
+                    hull.sharedMaterial = surface;
+                }
+                hull.sharedMesh = null;
+                hull.sharedMesh = hullMesh;
+                return hull.sharedMesh != null;
+            }
+            catch (System.Exception) { return false; }
         }
 
         void SetTints(Color[] tints)
@@ -121,11 +182,27 @@ namespace Fragmentation
 
         static readonly int ColorId = Shader.PropertyToID("_Color"), HeatId = Shader.PropertyToID("_TemperatureColor");
 
+        /// <summary>Gone: put back, out of sight, for another piece to use.</summary>
+        void PutAway()
+        {
+            all.Remove(this);
+            if (box != null) colliders.Remove(box);
+            if (hull != null) colliders.Remove(hull);
+            if (mesh != null) { Destroy(mesh); mesh = null; filter.sharedMesh = null; }
+            from = null;
+            if (rb != null) { rb.velocity = Vector3.zero; rb.angularVelocity = Vector3.zero; }
+            gameObject.SetActive(false);
+            if (pool.Count < 160) pool.Push(this);
+            else Destroy(gameObject);
+        }
+
         void OnDestroy()
         {
             all.Remove(this);
             if (box != null) colliders.Remove(box);
+            if (hull != null) colliders.Remove(hull);
             if (mesh != null) Destroy(mesh);
+            if (hullMesh != null) Destroy(hullMesh);
         }
 
         /// <summary>Whether the game is giving loose objects their weight just now (it does that while the craft being flown is whole and its physics running).</summary>
@@ -231,7 +308,7 @@ namespace Fragmentation
             {
                 // It sinks into the ground as it goes, shrinking, rather than vanishing.
                 float left = 1f - (now - fading) / 1.5f;
-                if (left <= 0f) { Destroy(gameObject); return; }
+                if (left <= 0f) { PutAway(); return; }
                 transform.localScale = scale * left;
             }
             if (heat > 0f || shownHeat > 0f)
@@ -279,6 +356,8 @@ namespace Fragmentation
         public static void Clear()
         {
             foreach (Piece p in all.ToArray()) if (p != null) Destroy(p.gameObject);
+            foreach (Piece p in pool) if (p != null) Destroy(p.gameObject);
+            pool.Clear();
             all.Clear();
             colliders.Clear();
             // (and any left behind by an older copy of the mod, found by name)

@@ -24,6 +24,15 @@ namespace Fragmentation
         public float lastTouch = -100f;     // when it last touched anything (Time.fixedTime)
         public float firstTouch = -100f;
         public string why = "";             // what last hurt it, for the log
+        public HullPlan plan;               // its skin, cut into panels (asked for when it was armed; ready a moment later: see HullPlan)
+        public bool planAsked;
+        public Hull hull;                   // its skin as it is being torn (made the first time it is hurt)
+        public float crushed;               // how much of its length blows have crushed, 0 to 1
+        public float bite;                  // how deep it has dug into soft ground, metres
+        public float onSoil;                // when it last slid on soil (Time.fixedTime)
+        public bool sever;                  // something was torn off it: see whether what holds it to the parts beside it still does
+        public bool hullMissed;             // (said in the log once: its skin could not be torn)
+        public float slidOn, groundWork;    // (for the readouts) metres it slid along the ground touching it, and the work done grinding its skin there, kJ
 
         // ---- what touched it in the last step of the physics (summed; see Crashes.Step, which empties it)
         public int touches;
@@ -75,7 +84,10 @@ namespace Fragmentation
 #if DEV
         // (development build: what was heard, for finding out why something was not)
         public static int HeardGround, HeardCraft, HeardOther, HeardUnarmed, HeardPieces, HeardSameCraft;
-        public static string LastOther = "";
+        static Collider lastOther;
+        static Part lastOtherPart;
+        /// <summary>What was heard last that was not the ground (made into words only when asked: a crash hears hundreds a second).</summary>
+        public static string LastOther => lastOther == null ? "" : lastOther.name + " on layer " + lastOther.gameObject.layer + (lastOtherPart != null ? " (" + (lastOtherPart.partInfo != null ? lastOtherPart.partInfo.name : lastOtherPart.name) + " of " + (lastOtherPart.vessel != null ? lastOtherPart.vessel.GetDisplayName() : "no craft") + ")" : " (not a part)");
 #endif
 
         void Take(Collision c, bool enter)
@@ -104,7 +116,7 @@ namespace Fragmentation
             {
                 other = FlightGlobals.GetPartUpwardsCached(them.gameObject);
 #if DEV
-                LastOther = them.name + " on layer " + layer + (other != null ? " (" + (other.partInfo != null ? other.partInfo.name : other.name) + " of " + (other.vessel != null ? other.vessel.GetDisplayName() : "no craft") + ")" : " (not a part)");
+                lastOther = them; lastOtherPart = other;
                 if (other != null && other.vessel == part.vessel) HeardSameCraft++;
                 else if (other != null) HeardCraft++;
                 else HeardOther++;

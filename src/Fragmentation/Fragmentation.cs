@@ -3,7 +3,7 @@ using Keystone;
 using UnityEngine;
 
 #if !DEV
-[assembly: KSPAssembly("Fragmentation", 0, 1)]
+[assembly: KSPAssembly("Fragmentation", 0, 2)]
 [assembly: KSPAssemblyDependency("Keystone", 0, 5)]
 #endif
 
@@ -32,7 +32,7 @@ namespace Fragmentation
     /// </summary>
     public static class Frag
     {
-        public const string Version = "0.1.0";
+        public const string Version = "0.2.1";
 
         public static Mod Page;
         public static Toggle On, Fires;

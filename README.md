@@ -1,51 +1,51 @@
 # Fragmentation
 
-Crashes as they are. A craft that hits the ground breaks up from the parts that hit it; one that comes in at
-a slant slides and tumbles on along the ground and comes apart as it goes; split tanks leak for a moment and
-then go up; and every part that is destroyed falls apart into pieces of its own skin, which are solid, hit
-things and come to rest. Parts from other mods break up as the game's own do.
+Crashes as they are. A craft that hits the ground breaks up from the parts that hit it, and what breaks is
+the parts' own skins: a tank is crushed in at the end that hit, has its underside torn away as it slides,
+splits, leaks for a moment and goes up. A rocket that comes in at a slant digs into soft ground, tears itself
+open, scoops up the earth and stops within tens of metres, leaving a scar of torn earth and a trail of torn
+panels, rings and shreds of itself, every piece trailing a little smoke. Parts from other mods break up as the
+game's own do.
 
-![The same rocket thrown at the grass at 70 m/s, 4 degrees down, with Fragmentation (above) and without it (below)](src/Fragmentation/img/fragmentation-beside.jpg)
+![The same rocket thrown at the grass at 70 m/s, 3 degrees down, with Fragmentation (above) and without it (below)](src/Fragmentation/img/fragmentation-beside.jpg)
 
-*The same throw, filmed twice, each in a scene loaded afresh at the same hour, the frames 1.0, 1.9, 2.6 and
-4.6 seconds after the throw; the test rocket's tanks a tenth full, so that its fire does not hide the rest.
-Above, with Fragmentation: it touches, slides on raising the ground's dust and comes apart as it goes (20 parts
-to 13), and a split tank goes up further along; the main wreck stopped 70 m (230 feet) from where it touched.
-Below, the game's own crash, with Volumetric Explosions' fire: every part that touched went up where it
-touched.*
+*The same throw, filmed twice from the same place, each time in a scene loaded afresh, at the same moments: 0.9,
+1.4, 2.0, 2.9 and 5.6 seconds after the throw; the test rocket's tanks a tenth full, so that its fire does not hide
+the rest. Above, with Fragmentation: it touches, slides away from the camera raising the ground's dust and tearing
+its underside open, its tanks split and go up one after another, and the wreck stops some 80 m from where it
+touched, burning at the end of the scar it dug. Below, the game's own crash, with Volumetric Explosions' fire: every part goes up
+where it first touched, close in front of the camera, and the cloud of it fills the view.*
 
-![What is left: the wreck where it stopped, on its burn mark, and pieces about it](src/Fragmentation/img/fragmentation-left.jpg)
+![What is left: torn tanks, the scar, torn panels and pieces of the tube](src/Fragmentation/img/fragmentation-torn.jpg)
 
-*What was left: the main wreck, real parts still, where it stopped on its burn mark; the pod and pieces about it.*
+*What is left, close by: the wreck where it stopped, on its burn mark (left); the same from the other side, the
+scar it dug coming in behind it (middle); a torn piece of a tank's skin, its edge in strips, and an arc of one of
+its rings beyond (right).*
 
 For Kerbal Space Program 1.12.x. Needs [Keystone](https://github.com/IshiakiZ/ksp-keystone). Works with
-[Volumetric Explosions](https://github.com/IshiakiZ/ksp-volumetric-explosions) 0.4.0 or later where it is installed (then the
-explosions are its fire and smoke, and leaks, burning pieces and the dust of a slide go into its air); both
-come in the download.
+[Volumetric Explosions](https://github.com/IshiakiZ/ksp-volumetric-explosions) where it is installed (its fire and smoke are then the
+explosions, and leaks, fires, the smoke of every piece and the dust of a slide go into its air); both come in the
+download.
 
-**Nothing in it is particular to a Mac**: it is plain C#, with no shader of its own. But it has only ever
-been run on a Mac: it has **not been run on Windows or Linux**. The fire and smoke are Volumetric Explosions',
-which draws them as a volume only on OpenGL (a Mac, Linux); on Windows that mod draws flat sprites, and the
-leaks, burning pieces and dust of this one are not drawn at all.
+**Nothing in it is particular to one system**: it is plain C#, with no shader of its own. The fire and smoke
+are Volumetric Explosions', which draws them as a volume on OpenGL (a Mac, Linux) and, with its shaders built
+for Direct3D, on Windows. Where that mod draws flat sprites instead (an older copy of it), the leaks, burning
+pieces and dust of this one are not drawn at all.
 
 ## What it does
 
-* **The breakup comes from the craft.** Each part reports what it touches. A part that hits the ground is
-  crushed by as much of the craft's energy as goes into the ground there; one that holds stops the craft
-  going into the ground but not along it; the craft is turned over by the blow, and the next part comes down.
-* **A wreck slides.** On the ground it is slowed by friction and, on soil, by ploughing into it, and turned
-  and tumbled by where it touches; the parts that drag are ground away, shedding pieces, and torn off.
-* **Tanks split before they go up.** What is in a split tank comes out for a moment (alight, most times, where
-  there is air with oxygen; where there is none, if it carries its own oxidiser) and pushes the craft the other
-  way; then the rest goes up, at that place, while the wreck goes on. So a slide leaves fires and explosions
-  along its way, not one blast where it began. One that does not catch runs out, and nothing goes up.
-* **In orbit too.** A craft that clips another tears at what it hits: a tank holed by a part driven into it
-  leaks, burning, for a second or so and goes up.
-* **Pieces of the part itself.** A destroyed part's own meshes are cut into pieces, few large and many small,
-  scorched where they burned; each is solid, with its share of the part's mass, and is thrown by blasts.
-  They come to rest and cost nothing lying still; the oldest go when there are too many.
-* **The game's own explosions.** A part that carried propellant goes up through the game's own explosion
-  (Volumetric Explosions' fire, where installed), told it was a crash, and how fast.
+* **Parts tear.** Each part's skin is cut into panels, few large and many small, from its own meshes (any part
+  from any mod). A blow crushes the end that hit and folds the rest; dragged along the ground, the underside is
+  torn away panel by panel and the top kept; a tank torn right round comes apart; a part that has lost the skin
+  where it is joined to the next comes away from it.
+* **A wreck digs in.** On soil it ploughs, deeper as it goes; torn open, it scoops up the earth and holds in it.
+  On paving it scrapes, and steel throws sparks.
+* **Tanks split before they go up**: what is in a split tank comes out for a moment (alight, most times, where
+  there is oxygen), then the rest goes up there, while the wreck goes on burning.
+* **The pieces are the parts' own**: torn panels with their insides and torn edges showing, rings and stringers
+  out of torn tanks, engines whole; shreds, rivets, foil, clods and slabs of turf. Solid, thrown by blasts, at rest
+  they cost nothing.
+* **In orbit too**: a craft that clips another tears at what it hits; a holed tank leaks and goes up.
 
 ## Install
 
@@ -67,13 +67,22 @@ In the Keystone window (the keystone button on the game's toolbar, or Option-K o
 
 ## Good to know
 
-* While a craft is close enough to the ground (or to another craft) to hit it at speed, its parts' crash
-  tolerance is raised (a mod that shows it will show a very large number) and this mod decides what a blow
-  does. A craft that touches down within its parts' tolerances is not hurt, as in the game.
-* What water does is left to the game.
-* A big crash costs about what the game's own crash with Volumetric Explosions costs (measured: about 30 frames
-  a second either way, where the game ran at 55 before; Apple M5 Pro, 1280 by 720).
-* Made on 2026-10-09; see [what was tested](docs/What-was-tested.md). Nobody has
+* While a craft could hit something at speed, its parts' crash tolerance is raised (a mod that shows it will
+  show a very large number) and this mod decides what a blow does. A craft that touches down within its parts'
+  tolerances is not hurt, as in the game. What water does is left to the game.
+* A big crash costs about what the game's own crash with Volumetric Explosions costs (the same throw, measured
+  each way in a scene loaded afresh: 31 to 38 frames a second through the ten seconds after it, against 28 to 35;
+  the worst single frame 170 ms against 147; Apple M5 Pro, 1280 by 720).
+* Made on 2026-10-09 and 10; see [what was tested](docs/What-was-tested.md). Nobody has
   played with it yet.
 
-More: [how it works](docs/How-it-works.md), [what it is based on](docs/Research.md).
+## Where it works
+
+| System | |
+| --- | --- |
+| Mac | Made and tried here (KSP 1.12.5, OpenGL). |
+| Windows | Tried on Windows 11 (KSP 1.12.5, Direct3D 11; 0.1, before 0.2.0's tearing and trails), with Volumetric Explosions: Kerbal X crashed by the pad, its parts dented and broken by this mod (its lines in the game's log), the wreck sliding 26 m, the fire and smoke drawn as a volume. Then 0.2.0: Kerbal X thrown into the assembly building's wall at 60 m/s, 25 m up: the pod went up, tanks split and leaking ("8000 kg in it, alight"), 78 pieces of wreckage, smoke up the building's face; 53 to 65 frames a second just after. |
+| Linux | **Never run.** |
+
+More: [how it works](docs/How-it-works.md), [what it is based on](docs/Research.md),
+[limits](docs/Limits.md).
