@@ -22,10 +22,11 @@ where it first touched, close in front of the camera, and the cloud of it fills 
 scar it dug coming in behind it (middle); a torn piece of a tank's skin, its edge in strips, and an arc of one of
 its rings beyond (right).*
 
-For Kerbal Space Program 1.12.x. Needs [Keystone](https://github.com/IshiakiZ/ksp-keystone). Works with
+For Kerbal Space Program 1.12.x. Needs [Keystone](https://github.com/IshiakiZ/ksp-keystone), a separate download ([its page on
+SpaceDock](https://spacedock.info/mod/4665/Keystone)): this mod does not load without it. Works with
 [Volumetric Explosions](https://github.com/IshiakiZ/ksp-volumetric-explosions) where it is installed (its fire and smoke are then the
-explosions, and leaks, fires, the smoke of every piece and the dust of a slide go into its air); both come in the
-download.
+explosions, and leaks, fires, the smoke of every piece and the dust of a slide go into its air); that too is a separate download
+([on SpaceDock](https://spacedock.info/mod/4669/Volumetric%20Explosions)).
 
 **Nothing in it is particular to one system**: it is plain C#, with no shader of its own. The fire and smoke
 are Volumetric Explosions', which draws them as a volume on OpenGL (a Mac, Linux) and, with its shaders built
@@ -52,8 +53,9 @@ pieces and dust of this one are not drawn at all.
 
 ## Install
 
-Copy the `Keystone`, `VolumetricExplosions` and `Fragmentation` folders from the download into
-your KSP `GameData`.
+Install [Keystone](https://github.com/IshiakiZ/ksp-keystone) first: it is a download of its own, and its `Keystone` folder goes into your KSP
+`GameData`. Then copy the `Fragmentation` folder from this mod's download into `GameData` beside it. [Volumetric
+Explosions](https://github.com/IshiakiZ/ksp-volumetric-explosions) is not needed, but with it the fire and smoke of a crash are drawn as a volume.
 
 ## Settings
 

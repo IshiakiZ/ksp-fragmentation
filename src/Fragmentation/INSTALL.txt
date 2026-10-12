@@ -10,11 +10,13 @@ rings and stringers, engines, shreds, rivets, clods and slabs of turf, every pie
 little smoke. Parts from other mods are torn as the game's own are.
 
 INSTALL
-  Copy the three folders in this download (Keystone, VolumetricExplosions and
-  Fragmentation) into your KSP's GameData folder, and start the game. Keystone is the base
-  this mod stands on. Volumetric Explosions is not needed, but with it the explosions are
+  This mod needs Keystone, the base it stands on, which is a separate download:
+    https://spacedock.info/mod/4665/Keystone
+  Copy Keystone's folder (Keystone) into your KSP's GameData folder, and the Fragmentation
+  folder from this download beside it, and start the game. Without Keystone the game does
+  not load this mod. Volumetric Explosions is not needed, but with it the explosions are
   its fire and smoke, and the leaks, the wreck's fire, the smoke of the pieces and the dust
-  of a slide go into its air.
+  of a slide go into its air:  https://spacedock.info/mod/4669/Volumetric%20Explosions
   To remove the mod, delete the Fragmentation folder.
 
 USE
