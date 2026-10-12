@@ -38,18 +38,21 @@ pieces and dust of this one are not drawn at all.
   from any mod). A blow crushes the end that hit and folds the rest; dragged along the ground, the underside is
   torn away panel by panel and the top kept; a tank torn right round comes apart; a part that has lost the skin
   where it is joined to the next comes away from it.
-* **A wreck digs in.** On soil it ploughs, deeper as it goes; torn open, it scoops up the earth and holds in it.
-  On paving it scrapes, and steel throws sparks.
+* **A wreck digs in.** On soil it ploughs, deeper as it goes; torn open, it scoops up the earth and holds in it,
+  and leaves a shallow scar with low broken lips, clods and crumbs of earth beside it. On paving it scrapes; an
+  engine torn loose throws sparks, sheds its bell and its fittings and is worn to pieces as it goes. A wreck does
+  not bound along the ground or roll on like a wheel. (The grass along the space centre's runway is soil; the
+  lawns round its buildings count as paving.)
 * **Tanks split before they go up**: what is in a split tank comes out for a moment (alight, most times, where
   there is oxygen), then the rest goes up there, while the wreck goes on burning.
 * **The pieces are the parts' own**: torn panels with their insides and torn edges showing, rings and stringers
-  out of torn tanks, engines whole; shreds, rivets, foil, clods and slabs of turf. Solid, thrown by blasts, at rest
+  out of torn tanks, engines' bells and pumps whole; shreds, rivets, foil, clods and slabs of turf. Solid, thrown by blasts, at rest
   they cost nothing.
 * **In orbit too**: a craft that clips another tears at what it hits; a holed tank leaks and goes up.
 
 ## Install
 
-Copy the `Keystone`, `VolumetricExplosions` and `Fragmentation` folders from the download's `GameData` into
+Copy the `Keystone`, `VolumetricExplosions` and `Fragmentation` folders from the download into
 your KSP `GameData`.
 
 ## Settings
@@ -74,15 +77,21 @@ In the Keystone window (the keystone button on the game's toolbar, or Option-K o
   each way in a scene loaded afresh: 31 to 38 frames a second through the ten seconds after it, against 28 to 35;
   the worst single frame 170 ms against 147; Apple M5 Pro, 1280 by 720).
 * Made on 2026-10-09 and 10; see [what was tested](docs/What-was-tested.md). Nobody has
-  played with it yet.
+  played with it yet. **0.2.2** (the evening of 2026-10-10): wrecks that no longer bound or roll on, engines worn
+  to pieces as they are dragged (a loose one thrown along the runway at 67 m/s now lies 60 to 80 m on, where it
+  rolled 240 to 330 m unmarked), the scar drawn as torn earth, the runway's grass as soil.
 
 ## Where it works
 
 | System | |
 | --- | --- |
 | Mac | Made and tried here (KSP 1.12.5, OpenGL). |
-| Windows | Tried on Windows 11 (KSP 1.12.5, Direct3D 11; 0.1, before 0.2.0's tearing and trails), with Volumetric Explosions: Kerbal X crashed by the pad, its parts dented and broken by this mod (its lines in the game's log), the wreck sliding 26 m, the fire and smoke drawn as a volume. Then 0.2.0: Kerbal X thrown into the assembly building's wall at 60 m/s, 25 m up: the pod went up, tanks split and leaking ("8000 kg in it, alight"), 78 pieces of wreckage, smoke up the building's face; 53 to 65 frames a second just after. |
+| Windows | Tried on Windows 11 (KSP 1.12.5, Direct3D 11; 0.1, before 0.2.0's tearing and trails), with Volumetric Explosions: Kerbal X crashed by the pad, its parts dented and broken by this mod (its lines in the game's log), the wreck sliding 26 m, the fire and smoke drawn as a volume. Then 0.2.0: Kerbal X thrown into the assembly building's wall at 60 m/s, 25 m up: the pod went up, tanks split and leaking ("8000 kg in it, alight"), 78 pieces of wreckage, smoke up the building's face; 53 to 65 frames a second just after. Then 0.2.2 (2026-10-11, with Volumetric Explosions 0.6.3): Kerbal X let fall onto the grass by the pad from 32, 110 and 150 m, and a Kerbal 1 from 45 m onto the road: the log told of tanks broken into pieces and torn away, a tank and two boosters "split and is leaking ... alight", a booster gone up, debris left as it lay after sliding one to three metres; in the pictures the blast's fire and smoke, earth thrown up in a ring, a scorched scar with clods round it, and at the end three fires burning on the ground at pieces of the wreck, each under its own smoke. The pieces themselves were mostly hidden in the blast's smoke from where the camera stood: smoke trailing from single pieces was not made out. The Kerbal 1's fall again with TUFX taken out: the same. No exception in the game's log. |
 | Linux | **Never run.** |
 
 More: [how it works](docs/How-it-works.md), [what it is based on](docs/Research.md),
 [limits](docs/Limits.md).
+
+## Licence
+
+[CC BY 4.0](LICENSE): use it, change it and pass it on as you like, as long as you credit Ishiaki and link back here.

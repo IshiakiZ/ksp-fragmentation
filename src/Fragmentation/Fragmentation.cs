@@ -32,7 +32,7 @@ namespace Fragmentation
     /// </summary>
     public static class Frag
     {
-        public const string Version = "0.2.1";
+        public const string Version = "0.2.2";
 
         public static Mod Page;
         public static Toggle On, Fires;

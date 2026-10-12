@@ -15,6 +15,8 @@ namespace Fragmentation
         public int partsSeen = -1;
         public float riskUntil, touched = -100f, since, calmSince;
         public bool inContact, calm;
+        public bool wrecked;                 // hurt by a blow or by being dragged, or a piece come off a craft that was: it no longer bounds or rolls (see Blow, Slide)
+        public float lastGround = -100f;     // when it last touched the ground (Time.fixedTime)
         public float slid, fastest, hardest;
         public Vector3 dustAt, dustNormal, dustGoing;
         public float dustSpeed, dustSize;
@@ -24,6 +26,9 @@ namespace Fragmentation
         public Part firePart;
         public Vector3 fireLocal;
         public float fireUntil, fireBig, fireBegan;
+        // ---- where it first touched anything (a place on the planet), for saying how far it went from there
+        public bool firstKnown;
+        public double firstLat, firstLon;
     }
 
     /// <summary>A tank split open: what is in it comes out for a moment before the rest goes up.</summary>
@@ -99,6 +104,15 @@ namespace Fragmentation
         public static float GrindSoil = 0.025f, GrindPaved = 0.03f;        // of the work the drag does, the share that tears at the skin that touches
         public static float SkinShare = 0.6f;          // grinding a part's whole skin away takes this share of what crushing it right through would
         public static float GrazeFriction = 0.5f;      // metal dragged along metal: the share of the push between them that tears at them
+        // ---- a part with no skin to tear (an engine: steel, its meshes whole)
+        public static float FrictionSteel = 0.7f, GougeSteel = 1.2f;       // dragged along paving: its friction whole, and broken (jagged steel gouging the paving)
+        public static float CatchPaved = 0.35f;        // and what its catching on the paving as it tumbles adds, per metre a second of speed
+        public static float WearPaved = 0.4f, WearSoil = 0.3f;             // of the work the drag does on it, the share that breaks it up
+        // (each of 0.2.2's rules for wrecks by itself, so that the development build can stand one aside and see what it does)
+        public static bool HoldWrecks = true, BrakeRolling = true, GripStrikes = true, BridgeHops = true, TellLawn = true;
+        public static float RollPlough = 0.35f;        // a wreck rolling or tumbling over soil ploughs this share of what one dragged through it does
+        public static float SpinLost = 0.3f;           // and a wreck loses this share of its turning at each blow (shared among the parts that strike together)
+        public static float Vault = 0.1f;              // a blow throws a craft up off the ground by no more than this share of the blow's speed (what struck gives way)
 
         void Awake()
         {
@@ -140,6 +154,8 @@ namespace Fragmentation
             catch (Exception) { yield break; }
             // (and this mod's own materials and textures made now, not at the first blow)
             try { Hull.Inside(); Marks.Prepare(v.CoM); Bits.Prepare(); Sparks.Prepare(); } catch (Exception ex) { Frag.Log("could not make ready: " + ex.Message); }
+            // (and, near the space centre, its ground's masks: which of it is lawn and which tarmac, see Ground)
+            try { Ground.Prepare(v.CoM); } catch (Exception ex) { Frag.Log("could not read the space centre's ground: " + ex.Message); }
             Frag.Log("the explosions mod's first patch of air begun and put away in " + ((System.Diagnostics.Stopwatch.GetTimestamp() - began) * 1000.0 / System.Diagnostics.Stopwatch.Frequency).ToString("F0") + " ms, before any crash");
             // (and each drawn once, too small and too far off to be seen: what drawing a material the first time costs is not paid in a crash)
             GameObject shown = null;
@@ -331,7 +347,8 @@ namespace Fragmentation
         {
             if (!wrecks.TryGetValue(v, out Wreck w))
             {
-                w = new Wreck { vessel = v, since = now, name = v.GetDisplayName() };
+                // (a piece just come off a craft that was being watched is a wreck from the first)
+                w = new Wreck { vessel = v, since = now, name = v.GetDisplayName(), wrecked = ArmedAlready(v) };
                 wrecks[v] = w;
                 Note("watching " + w.name + " (" + v.parts.Count + " parts, " + v.srf_velocity.magnitude.ToString("F0") + " m/s, " + v.radarAltitude.ToString("F0") + " m up)");
             }
@@ -370,7 +387,39 @@ namespace Fragmentation
                 }
             foreach (Hits h in w.hits) if (h != null) h.Disarm();
             if (w.vessel != null) wrecks.Remove(w.vessel);
-            if (w.slid > 1f || w.hardest > 0f) Note(w.name + " is left as it lies: slid " + w.slid.ToString("F0") + " m, hardest blow " + w.hardest.ToString("F0") + " m/s");
+            // (what it was and how far it went, for the log: a line that must never stop a craft being given its tolerances back)
+            string what = "", went = "";
+            try { what = What(w); went = Went(w); } catch (Exception) { }
+            if (w.slid > 1f) Note(w.name + what + " is left as it lies: slid " + w.slid.ToString("F0") + " m" + went + ", fastest on the ground " + w.fastest.ToString("F0") + " m/s, hardest blow " + w.hardest.ToString("F0") + " m/s");
+            else if (w.hardest > 0f) Note(w.name + what + " is left as it is: hardest blow " + w.hardest.ToString("F0") + " m/s");
+        }
+
+        /// <summary>What a craft is made of, for the log: its heaviest part, how many more, and its mass.</summary>
+        static string What(Wreck w)
+        {
+            Vessel v = w.vessel;
+            if (v == null || v.parts == null || v.parts.Count == 0) return "";
+            Part heaviest = null;
+            float mass = 0f;
+            foreach (Part p in v.parts)
+            {
+                if (p == null) continue;
+                float m = p.mass + p.GetResourceMass();
+                mass += m;
+                if (heaviest == null || m > heaviest.mass + heaviest.GetResourceMass()) heaviest = p;
+            }
+            if (heaviest == null) return "";
+            return " (" + (heaviest.partInfo != null ? heaviest.partInfo.title : heaviest.name) + (v.parts.Count > 1 ? " and " + (v.parts.Count - 1) + " more" : "") + ", " + mass.ToString("F2") + " t)";
+        }
+
+        /// <summary>How far a craft now lies from where it first touched (along the ground), for the log.</summary>
+        static string Went(Wreck w)
+        {
+            Vessel v = w.vessel;
+            if (v == null || !w.firstKnown || v.mainBody == null) return "";
+            double alt = v.mainBody.GetAltitude(v.CoMD);
+            double far = (v.mainBody.GetWorldSurfacePosition(w.firstLat, w.firstLon, alt) - v.CoMD).magnitude;
+            return " and lies " + far.ToString("F0") + " m from where it first touched";
         }
 
         void DisarmAll(bool remove)
@@ -555,12 +604,17 @@ namespace Fragmentation
                 touching.Add(h);
             }
             if (touching.Count == 0) { w.inContact = false; w.calm = false; w.dustSpeed = 0f; return; }
+#if DEV
+            Clock.Touched();
+#endif
             try
             {
                 w.touched = now;
                 w.inContact = true;
                 if (!w.body.Of(v)) return;
                 Body b = w.body;
+                // (where it first touched: how far it went from there is said when it is left, see Disarm)
+                if (!w.firstKnown && v.mainBody != null) { w.firstKnown = true; w.firstLat = v.mainBody.GetLatitude(b.C); w.firstLon = v.mainBody.GetLongitude(b.C); }
                 Vector3 V0 = b.V, W0 = b.W;
                 Vector3 frame = (Vector3)Krakensbane.GetFrameVelocity();
                 Vector3 g = (Vector3)FlightGlobals.getGeeForceAtPosition(b.C);
@@ -572,6 +626,15 @@ namespace Fragmentation
 
                 // ---- blows
                 long t0 = Prof.Now;
+                // (how many of its parts strike the ground in this step: the ground's grip in the blow is shared among them, see Blow)
+                strikes = 0;
+                foreach (Hits h in touching)
+                {
+                    if (!h.ground) continue;
+                    Vector3 c = h.point / h.touches, n = (h.normal / h.touches).normalized;
+                    Vector3 before = h.lastKnown ? h.lastVelocity + Vector3.Cross(h.lastSpin, c - h.lastCentre) + g * dt : b.At(c);
+                    if (-Vector3.Dot(before + frame, n) > Floor(h)) strikes++;
+                }
                 foreach (Hits h in touching)
                 {
                     Vector3 c = h.point / h.touches, n = (h.normal / h.touches).normalized;
@@ -582,7 +645,10 @@ namespace Fragmentation
                         Vector3 before = h.lastKnown ? h.lastVelocity + Vector3.Cross(h.lastSpin, c - h.lastCentre) + g * dt : b.At(c);
                         float into = -Vector3.Dot(before + frame, n);
                         float still = -Vector3.Dot(b.At(c) + frame, n);
-                        if (into > Floor(h)) Blow(w, h, c, n, into, still, now);
+                        // (and how fast the part's own middle was coming down: a tumbling wreck's corners strike far faster than it falls)
+                        float middle = h.lastKnown ? Mathf.Max(0f, -Vector3.Dot(h.lastVelocity + g * dt + frame, n)) : into;
+                        if (into > Floor(h)) Blow(w, h, c, n, into, still, now, middle);
+                        else if (w.wrecked && into > 1f) Hold(b, n, into);
                     }
                     else if (h.other != null)
                     {
@@ -625,6 +691,25 @@ namespace Fragmentation
             }
         }
 
+        /// <summary>
+        /// A part with no skin to tear: an engine (its bell, its pump and its mounting are whole meshes), or one whose skin could not be read or
+        /// was not cut in time. Grinding takes no panels off such a part, so the ground wears it as a whole instead (see Slide and Hull.Wear).
+        /// </summary>
+        static bool Solid(Hits h) => h.plan == null || h.plan.failed || h.plan.engine || h.hullMissed;
+
+        /// <summary>
+        /// What strikes gives way rather than throwing the wreck up: a wreck does not bound along the ground like a ball. Whatever speed away
+        /// from what it struck the wreck's middle has after the blow, beyond a share of the blow's own speed, is taken from it (it went into
+        /// crushing what struck: thin structure folds and stays folded). Only a craft already hurt: one that comes down within what its parts
+        /// take bounces as the game has it.
+        /// </summary>
+        static void Hold(Body b, Vector3 n, float into)
+        {
+            if (!HoldWrecks) return;
+            float away = Vector3.Dot(b.V + (Vector3)Krakensbane.GetFrameVelocity(), n), most = Vault * into + 0.3f;
+            if (away > most) b.V -= n * (away - most);
+        }
+
         /// <summary>Below this speed into something, touching it is only touching it.</summary>
         static float Floor(Hits h) => Mathf.Max(2.5f, 0.45f * h.Tolerance);
 
@@ -656,7 +741,7 @@ namespace Fragmentation
             return 0.38f * SkinShare / 0.6f * Mathf.Max(0.1f, Frag.Tough) * (full * 1000f) / Mathf.Max(0.05f, area);
         }
 
-        void Blow(Wreck w, Hits h, Vector3 c, Vector3 n, float into, float still, float now)
+        void Blow(Wreck w, Hits h, Vector3 c, Vector3 n, float into, float still, float now, float middle)
         {
             Body b = w.body;
             float m = b.MassAlong(c, n);
@@ -664,12 +749,13 @@ namespace Fragmentation
             float t = h.Tolerance;
             float energy = into > t ? 0.5f * m * (into * into - t * t) : 0f;
             float cap = Capacity(h), left = cap * Mathf.Max(0f, 1f - h.crushed);
-            float J;
+            float J, stopped;          // (stopped: the speed into the ground that the ground took out of the craft there, the physics' share and this mod's)
             string what;
             if (energy <= left)
             {
                 // its going into the ground is stopped there, with a little bounce
                 J = Mathf.Max(0f, m * (still + Restitution * into));
+                stopped = into * (1f + Restitution);
                 what = energy > 0.01f * cap ? "crushed in" : "dented";
             }
             else
@@ -677,6 +763,7 @@ namespace Fragmentation
                 // crushed through: it takes what it can, and the craft goes on into the ground that much slower
                 float after = Mathf.Sqrt(Mathf.Max(0f, into * into - t * t - 2f * left / m));
                 J = Mathf.Max(0f, m * (still - after));
+                stopped = Mathf.Max(0f, into - after);
                 what = "crushed through";
             }
             float share = cap > 0f ? energy / cap : 0f;
@@ -699,13 +786,42 @@ namespace Fragmentation
             Vector3 u = b.At(c) + (Vector3)Krakensbane.GetFrameVelocity();
             Vector3 ut = u - n * Vector3.Dot(u, n);
             float st = ut.magnitude;
-            if (st > 0.1f && J > 0f)
+            if (st > 0.1f)
             {
                 Vector3 along = ut / st;
-                float jt = Mathf.Min((h.paved ? BitePaved : Bite) * J, b.MassAlong(c, along) * st * 0.9f);
+                bool solid = Solid(h);
+                float slide = Mathf.Max(0.2f, Frag.Slide);
+                // On soil, a share of what this mod stops there. On paving, the paving's friction on the whole of what the ground pushed back
+                // with in the blow, what the physics had stopped already as well: a wreck that bounds and tumbles along is held back at every
+                // strike as one that slides is all the way. (Before, with the bite reckoned on this mod's share alone, a tumbling engine lost
+                // next to nothing at each strike and went on for three hundred metres, most of them in the air.)
+                float jt = (h.paved ? BitePaved : Bite) * J;
+                if (GripStrikes && h.paved)
+                {
+                    float torn = h.hull != null ? 1f - h.hull.Left : Mathf.Clamp01(h.damage);
+                    if (solid) torn = Mathf.Max(torn, Mathf.Clamp01(h.damage));
+                    float grip = solid ? Mathf.Lerp(FrictionSteel, GougeSteel, Mathf.Clamp01(torn * 1.5f)) : Mathf.Lerp(FrictionPaved, Gouge, Mathf.Clamp01(torn * 2.5f));
+                    // (each part that strikes in the same step is reckoned to stop its share of the craft: the push is the craft's, once.
+                    // And no more than stopping the wreck's own fall takes: reckoned on how fast the corner that struck was going, a
+                    // tumbling engine was spun up like a top by its first two strikes and smashed by the third, 26 m from its first touch)
+                    jt = Mathf.Max(BitePaved * J, grip * Mathf.Min(m * stopped, b.M * middle * (1f + Restitution)) / (slide * Mathf.Max(1, strikes)));
+                }
+                else if (GripStrikes && solid) jt = Mathf.Max(jt, Friction * Mathf.Min(m * stopped, b.M * middle * (1f + Restitution)) / (slide * Mathf.Max(1, strikes)));
+                jt = Mathf.Min(jt, b.MassAlong(c, along) * st * 0.9f);
                 impulse -= along * jt;
+                // (and that grip's work wears a part with no skin to tear, as the drag's does: see Slide)
+                if (solid && cap > 0f) h.damage += (h.paved ? WearPaved : WearSoil) * jt * st / cap;
             }
             b.Push(c, impulse);
+            h.struck = true;
+            if (energy > 0f) w.wrecked = true;
+            if (w.wrecked)
+            {
+                Hold(b, n, into);
+                // (and where the ground gripped it, some of its turning goes into what gave way: a wreck tumbles, it does not spin up
+                // like a wheel. Not a skinned wreck on soil, which is not gripped so: a long craft that digs an end in still cartwheels)
+                if (HoldWrecks && GripStrikes && (h.paved || Solid(h))) b.W *= 1f - SpinLost / Mathf.Max(1, strikes);
+            }
             // (and the ground: a crater where it hit soft ground hard, clods thrown out of it; and the dust and sparks of the blow)
             if (!h.paved && into > 8f) Marks.Crater(c, n, energy, u, h);
             if (into > 9f && energy > 0.05f * cap) Thud(w, h, c, into, now);
@@ -713,6 +829,7 @@ namespace Fragmentation
         }
 
         float thudAt = -10f;
+        int strikes = 1;                     // how many parts of the craft being stepped strike the ground in this step
 
         /// <summary>
         /// A hard blow throws up dust and sparks, as the explosions mod makes them for a crash at that speed with the craft's weight behind it (and
@@ -793,6 +910,9 @@ namespace Fragmentation
                 if (h.paved) paved++;
             }
             if (count == 0) { w.dustSpeed = 0f; return; }
+            // (a wreck that left the ground for a moment and is down again: how long it was off it, see the catching on paving below)
+            float gap = now - w.lastGround, lapse = BridgeHops && w.wrecked && gap > dt && gap <= 0.3f ? gap : dt;
+            w.lastGround = now;
             c /= count;
             n = n.normalized;
             Vector3 u = b.At(c) + frame;
@@ -804,7 +924,8 @@ namespace Fragmentation
             Vector3 centre = b.V + frame;
             Vector3 centreAlong = centre - n * Vector3.Dot(centre, n);
             float vc = centreAlong.magnitude;
-            if (vc > 0.3f && s < 0.6f * vc && paved * 2 <= count)
+            // (a craft that is whole: a wreck is held back harder, below)
+            if (vc > 0.3f && s < 0.6f * vc && paved * 2 <= count && !(w.wrecked && BrakeRolling))
             {
                 float sink = 0f;
                 foreach (Hits h in touching) if (h.ground) sink = Mathf.Max(sink, h.bite);
@@ -814,13 +935,17 @@ namespace Fragmentation
                 b.V -= centreAlong / vc * (vc * k);
                 b.W -= axis * (Vector3.Dot(b.W, axis) * k);
             }
-            if (s < 0.5f) return;
+            // (a wreck whose middle is going along the ground is held back whether the place that touches slides, rolls or bounds: see below)
+            bool tumbles = BrakeRolling && w.wrecked && vc > 1f;
+            if (s < 0.5f && !tumbles) return;
             float slide = Mathf.Max(0.2f, Frag.Slide);
             float pressed = Mathf.Max(0f, -Vector3.Dot(g, n));
             float share = b.M / count;
-            w.slid += s * dt;
-            // (what touches, measured across the way the wreck goes: the scar it leaves is as wide as all of it)
-            Vector3 across = Vector3.Cross(n, ut / s).normalized;
+            w.slid += (tumbles ? Mathf.Max(s, vc) : s) * dt;
+            // (what touches, measured across the way the wreck goes: the scar it leaves is as wide as all of it. The way its middle goes, not
+            // the way of the place that touches, which swings about as a wreck tumbles and made a scrape that ran in zigzags)
+            Vector3 going = vc > 1f ? centreAlong / vc : ut / Mathf.Max(s, 1e-3f);
+            Vector3 across = Vector3.Cross(n, going).normalized;
             float markLo = float.MaxValue, markHi = float.MinValue, markDeep = 0f;
             int marked = 0, markedPaved = 0;
             // Each place that touches drags by its share of the craft's weight, the way that place is going: so a craft that slews
@@ -832,12 +957,43 @@ namespace Fragmentation
                 Vector3 there = b.At(at) + frame;
                 Vector3 along = there - normal * Vector3.Dot(there, normal);
                 float sh = along.magnitude;
+                // Nothing of a wreck is a wheel. Where the place that touches is going slower than the wreck's middle (the wreck rolls over it,
+                // or tumbles), the wreck is held back by its middle's speed all the same, and its turning with it: it comes down on its corners
+                // and edges at every turn, and each one catches (in soil, digs in). (Until 0.2.2 a loose engine rolled and bounded three hundred
+                // metres along the runway on its mounting ring, unmarked, and a pod as far over grass.)
+                bool rolls = tumbles && sh < 0.8f * vc;
+                if (rolls) { along = centreAlong; sh = vc; }
                 if (sh < 0.3f) continue;
                 // (a part's skin is taken only when something is done to it: each costs its own copy of its corners)
                 Hull hull = h.hull;
                 float torn = hull != null ? 1f - hull.Left : Mathf.Clamp01(h.damage);
-                float a;
-                if (h.paved) a = (Mathf.Lerp(FrictionPaved, Gouge, Mathf.Clamp01(torn * 2.5f)) * pressed + PloughPaved * sh) / slide;
+                // (a part with no skin to tear, an engine: what stands for its tearing is how far it is worn and broken)
+                bool solid = Solid(h);
+                if (solid) torn = Mathf.Max(torn, Mathf.Clamp01(h.damage));
+                float a, J, caught = 0f;      // (caught: the part of the drag that is an engine's catching, which holds the wreck's middle back and does not turn it over)
+                // On paving a smooth skin slides (a third of its weight), a torn one gouges. An engine is steel, and all corners: it grips harder
+                // from the first, harder still as it is broken, and catches on the paving as it goes, the more the faster (as set: see the wiki's
+                // Limits page for what plain friction would do).
+                if (h.paved)
+                {
+                    float grip = solid ? Mathf.Lerp(FrictionSteel, GougeSteel, Mathf.Clamp01(torn * 1.5f)) : Mathf.Lerp(FrictionPaved, Gouge, Mathf.Clamp01(torn * 2.5f));
+                    float more = (solid ? CatchPaved : PloughPaved) * sh;
+                    a = (grip * pressed + more) / slide;
+                    // (what bears on the paving there: its share of the craft's weight. A blow's own grip is reckoned in Blow. What the
+                    // physics says the paving pushed back with in a touch was tried in its place: with it an engine doing 65 m/s stopped
+                    // in 34 m, over 6 g. It was taken out without being tried by itself: a wreck held to the ground is pushed back at
+                    // every step, and the pushes add up to far more than its weight)
+                    // (its weight bears for as long as it was off the ground as well, if that was a moment: a wreck that skips along comes
+                    // down each time as hard as the time it was up, and the paving's friction is owed on all of it. With friction only in the
+                    // steps in which it touched, a pod was 180 m from where it first touched having touched for 13 m of them.)
+                    float load = share * pressed * lapse;
+                    // (and an engine's catching for as long likewise: what is meant to act all the way along must not act only in the
+                    // steps in which something happens to touch)
+                    float rub = (grip * load + (solid ? 0f : share * more * dt)) / slide;
+                    caught = solid ? share * more * lapse / slide : 0f;
+                    J = Mathf.Min(rub + caught, share * sh * 0.5f);
+                    caught *= J / Mathf.Max(1e-6f, rub + caught);
+                }
                 else
                 {
                     // On soil it digs in as it goes, deeper the further it slides (most of the way in within a dozen metres), down to a share
@@ -851,22 +1007,48 @@ namespace Fragmentation
                     // scooping of soil into the airframe resulting in high deceleration levels"; a smooth aeroplane's belly on soft grass, about 0.4 g.
                     // Torn open and dug in, its jagged edges hold in the earth as well: a wreck that has torn its underside away does not slide far)
                     float open = Mathf.Clamp01(torn * 2.5f);
+                    // (an engine's pipes, its mounting and the lip of its bell catch in the earth from the first: it is no smooth skin)
+                    if (solid) open = Mathf.Max(open, 0.4f);
                     float grip = Friction * (1f + Anchor * open * Mathf.Clamp01(h.bite / 0.15f));
-                    a = (grip * pressed + Plough * sh * (1f + h.bite / Dig) * (0.4f + Scoop * open)) / slide;
+                    // (a wreck that rolls or tumbles over the earth digs in at every turn and rolls out again: it ploughs, but not as
+                    // one dragged through it does. Ploughing in full, the pieces of a rocket that had gone up at 70 m/s lay 25 m from where
+                    // it first touched: stopped dead, at some 10 g)
+                    float plough = Plough * sh * (1f + h.bite / Dig) * (0.4f + Scoop * open) * (rolls ? RollPlough : 1f);
+                    a = (grip * pressed + plough) / slide;
+                    // (the friction owed for a moment off the ground, as on paving; the ploughing only while it is in the earth)
+                    J = Mathf.Min(share * (a * dt + grip * pressed * (lapse - dt) / slide), share * sh * 0.5f);
                 }
-                float J = Mathf.Min(share * a * dt, share * sh * 0.5f);
-                b.Push(at, -along / sh * J);
+                if (rolls)
+                {
+                    // (its middle held back, and its turning by as much)
+                    float k = Mathf.Min(0.9f, J / Mathf.Max(1e-6f, b.M * vc));
+                    b.V -= centreAlong * k;
+                    b.W *= 1f - k;
+                }
+                else
+                {
+                    // (friction where it touches, which turns the wreck over that place; the catching on its middle. The catching was
+                    // first applied where the engine touched: thrown lying level, it was then off the ground again within a few tens of
+                    // metres and bounded on for three hundred, see the wiki's What was tested)
+                    b.Push(at, -along / sh * (J - caught));
+                    if (caught > 0f) b.V -= along / sh * (caught / b.M);
+                }
                 // The work the drag does is done on the part that touches: it is ground away by it, from below. (Dragged along slower than
                 // it could take a blow, it is only scuffed.)
                 float t = h.Tolerance;
                 float work = J * sh * Mathf.Clamp01((sh - 0.5f * t) / t);
                 float grind = work * (h.paved ? GrindPaved : GrindSoil);
-                h.damage += grind / Capacity(h) * 0.5f;
+                // (a part with no skin to tear is worn as a whole, whichever way up it is as it tumbles: a good share of the drag's work
+                // goes into breaking it, and its meshes come away one after another, see Hull.Wear; it goes altogether when it is worn through)
+                float wear = solid ? work * (h.paved ? WearPaved : WearSoil) : 0f;
+                if (work > 0f) w.wrecked = true;
+                h.damage += solid ? wear / Capacity(h) : grind / Capacity(h) * 0.5f;
                 h.slidOn += sh * dt;
-                h.groundWork += grind;
+                h.groundWork += solid ? wear : grind;
                 if (work > 0f && (hull = hull ?? HullFor(h)) != null)
                 {
                     if (hull.Grind(at, normal, grind, SkinToughness(h)) > 0) h.sever = true;
+                    if (solid && hull.Wear(at, normal, h.damage) > 0) h.sever = true;
                     if (!h.paved) hull.Bite(-normal, h.bite);
                 }
                 if (h.lastTouch < 0f || now - h.lastTouch > 0.5f) h.firstTouch = now;
@@ -889,14 +1071,19 @@ namespace Fragmentation
                 }
                 if (h.paved && sh > 8f)
                 {
-                    float steel = h.plan != null && h.plan.engine ? 1f : 0.12f;
+                    // (steel dragged fast along paving throws a stream of sparks, the more the faster and the harder it is held back; a tank's
+                    // aluminium hardly any)
+                    float steel = h.plan != null && h.plan.engine ? 3f : 0.12f;
                     float due = sh * dt * 0.5f * steel;
                     int sparks = (int)due + (Random.value < due - (int)due ? 1 : 0);
-                    if (sparks > 0) Sparks.Emit(at + normal * 0.05f, along, normal, sparks);
+                    if (sparks > 0) Sparks.Emit(at + normal * 0.05f, along, normal, Mathf.Min(sparks, 8));
+                    // (and bits of it: chips of metal, bolts, as it is worn)
+                    if (solid && Random.value < sh * dt * 0.12f)
+                        Bits.Emit(at + normal * 0.1f, along * Random.Range(0.3f, 0.7f) + normal * Random.Range(1f, 4f), 3f, Random.Range(1, 3), 0.015f, 0.07f, Random.value < 0.3f ? Bits.Kind.Bolt : Bits.Kind.Metal, 0f, 0.05f);
                 }
             }
             // the ground marked by the wreck: a scar of torn earth on soil, a scrape on paving, as wide as what touches it
-            if (marked > 0) Marks.Track(w, c + across * (0.5f * (markLo + markHi)), n, ut / s, s, markDeep, markHi - markLo, markedPaved * 2 > marked);
+            if (marked > 0) Marks.Track(w, c + across * (0.5f * (markLo + markHi)), n, going, Mathf.Max(s, vc), markDeep, markHi - markLo, markedPaved * 2 > marked);
         }
 
         /// <summary>How wide a part is across the way it lies on the ground (metres): the narrower of its sides.</summary>
@@ -927,7 +1114,8 @@ namespace Fragmentation
                     else SpawnTorn(w, h, hull);
                 }
                 // (a part about to go altogether takes its small parts with it: they are not let go first)
-                if (hull.Left < 0.15f) { h.sever = false; Break(w, h, true); return; }
+                // (and an engine, whose meshes come away whole, once it is worn or crushed right through)
+                if (hull.Left < 0.15f || (hull.plan.engine && h.damage >= 1f)) { h.sever = false; Break(w, h, true); return; }
                 if (h.sever) { h.sever = false; Sever(w, h, hull); if (h.part == null || h.gone) return; }
             }
             else if (h.damage >= 1f) { Break(w, h, true); return; }
@@ -1335,7 +1523,10 @@ namespace Fragmentation
             {
                 if (hull != null)
                 {
-                    hull.TearAll(Torn.Broken);
+                    // (an engine worn through as it was dragged along the ground is strewn behind it, as what the ground tears off a skin is:
+                    // its last pieces are left on the ground, not sent on at the speed it was going)
+                    bool dragged = !burns && Solid(h) && h.slidOn > 2f && Time.fixedTime - h.lastTouch < 0.3f;
+                    hull.TearAll(dragged ? Torn.Ground : Torn.Broken);
                     spawnHeat = burns ? 0.8f : 0f; spawnBurning = burns ? (solid ? 0.85f : 0.4f) : 0f; spawnFrom = p.transform.position; spawnViolence = violence;
                     made = Spawn(w, h, hull, true);
                     spawnHeat = 0f; spawnBurning = 0f; spawnViolence = 0f;
@@ -1343,6 +1534,7 @@ namespace Fragmentation
                     // (the part itself is gone by then: where it was, and how it was going)
                     HullPlan plan = hull.plan;
                     Vector3 where = p.transform.position, going = prb != null ? prb.velocity : Vector3.zero;
+                    if (dragged) going *= 0.4f;
                     Quaternion turn = p.transform.rotation;
                     float kick = 3f + 3f * violence + (burns ? 6f : 0f), soot = burns ? 0.5f : 0f;
                     int rings = Random.Range(0, 2), bars = Random.Range(1, 3);

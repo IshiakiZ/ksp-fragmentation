@@ -80,7 +80,8 @@ namespace Fragmentation
                 bool earth = kind == Kind.Clod || kind == Kind.Turf;
                 b.drag = kind == Kind.Foil ? 2.5f / Mathf.Max(0.02f, b.size) * 0.02f + 0.6f : earth ? 0.02f : 0.12f / Mathf.Max(0.02f, b.size) * 0.05f;
                 b.age = 0f;
-                b.life = earth ? Random.Range(25f, 45f) : Random.Range(45f, 90f);
+                // (clods and sods lie by the scar they came out of for a minute or more: lying still they cost next to nothing)
+                b.life = earth ? Random.Range(60f, 100f) : Random.Range(45f, 90f);
                 b.fire = Random.value < burning ? Random.Range(2f, 7f) : 0f;
                 b.smoke = smoking * Random.Range(0.6f, 1.2f);
                 b.down = false;

@@ -6,16 +6,18 @@ namespace Fragmentation
 {
     /// <summary>
     /// What a crash does to the ground: on soil, a scar of torn earth along the way a wreck dug its way, as wide as all of it that
-    /// touched, with low ragged lips of the earth and turf it pushed aside; a crater with a raised rim where a part hit hard; on
-    /// paving, a dark scrape.
+    /// touched: a shallow gouge with low broken lips of the earth it pushed aside, clods and crumbs thrown on the grass beyond them;
+    /// a crater with a raised rim where a part hit hard; on paving, a dark scrape.
     ///
     /// The game's terrain is built afresh as the view moves (its pieces are made and unmade with the camera), so it is not
     /// itself changed: these are meshes laid on it, each point set on the ground beneath it, coloured by the earth of the
     /// place and lit as the ground is. A mesh cannot go below the ground's own surface (the ground would be drawn over it), so
-    /// the floor of a scar is drawn at the ground's level, dark torn earth streaked the way the wreck went, darkest along its edges
-    /// where the walls of a trench would be in shade; its lips are low (a tenth of a metre or two, the most of the earth thrown out
-    /// as clods and slabs of turf, see Crashes.Slide); and the wreck that dug it sits down in the ground by as much as it dug in
-    /// (see Hull.Bite). Seen from the side, a scar is a torn brown band with ragged edges, not a bank.
+    /// the floor of a scar is drawn at the ground's level, moist earth scored the way the wreck went, darkest under its edges
+    /// where the wall of a trench would be in shade; its lips are low (nine centimetres at most: most of the earth is thrown out
+    /// as clods and slabs of turf, see Crashes.Slide) and broken; beyond them the picture is cut out into scattered clods and
+    /// crumbs, so that the scar has no straight edge; and the wreck that dug it sits down in the ground by as much as it dug in
+    /// (see Hull.Bite). Seen from the side, a scar is a torn brown band with ragged edges, not a bank. (Until 0.2.1 the lips
+    /// were up to 0.3 m high on a mesh half as fine, and from a few metres they read as folded sheeting.)
     /// </summary>
     public static class Marks
     {
@@ -28,10 +30,12 @@ namespace Fragmentation
             public readonly List<Vector3> side = new List<Vector3>();    // across it, one long
             public readonly List<Vector3> up = new List<Vector3>();
             public readonly List<float> width = new List<float>(), deep = new List<float>(), run = new List<float>();
+            public readonly List<float> turns = new List<float>();       // how far along the earth's picture each point is (in turns of it)
             public readonly List<float[]> lift = new List<float[]>();    // each point's corners: the ground's height there, looked up once
             public Vector3 lastWorld;
             public float lastTime;
             public bool paved, dirty;
+            public float spacing = 0.8f;                                 // metres between its points
             public float layer;                                          // a few millimetres more lift for each scar, so that two over one another do not flicker
             public int seed;
         }
@@ -46,11 +50,16 @@ namespace Fragmentation
         static readonly Dictionary<object, Furrow> open = new Dictionary<object, Furrow>();
         static float dirtyAt;
 
-        const float Spacing = 0.8f;            // metres between the points of a scar
-        // Across a scar, in half-widths: the ragged outer edge of torn turf, the lip, the dark edge of the floor, the floor.
-        static readonly float[] across = { -1.75f, -1.3f, -1.08f, -0.9f, -0.55f, 0f, 0.55f, 0.9f, 1.08f, 1.3f, 1.75f };
-        static readonly float[] rise = { 0f, 0.5f, 1f, 0.3f, 0.04f, 0f, 0.04f, 0.3f, 1f, 0.5f, 0f };              // of the lip's height
-        static readonly float[] texU = { 0f, 0.12f, 0.2f, 0.27f, 0.38f, 0.5f, 0.62f, 0.73f, 0.8f, 0.88f, 1f };
+        // A scar on soil: a point every 0.4 m along it, and across it, in half-widths of the gouge itself: the earth thrown out on the grass
+        // beyond the lip (crumbs, thinning away: the texture is cut out there), the lip's foot, its crest, the wall, the edge of the floor,
+        // the floor. (Until 0.2.1 a point every 0.8 m and lips up to 0.3 m high: from a few metres they were broad smooth facets, "like
+        // folded sheeting".) The texture runs from 0 to 1 across all of it: the floor is its middle half.
+        const float Fine = 0.4f, Coarse = 0.8f;
+        static readonly float[] across = { -2f, -1.44f, -1.27f, -1.12f, -1f, -0.5f, 0f, 0.5f, 1f, 1.12f, 1.27f, 1.44f, 2f };
+        static readonly float[] rise = { 0f, 0.3f, 1f, 0.55f, 0f, 0f, 0f, 0f, 0f, 0.55f, 1f, 0.3f, 0f };          // of the lip's height
+        static readonly float[] texU = { 0f, 0.14f, 0.1825f, 0.22f, 0.25f, 0.375f, 0.5f, 0.625f, 0.75f, 0.78f, 0.8175f, 0.86f, 1f };
+        // A scrape on paving: a flat band, a point every 0.8 m along it and eleven across.
+        static readonly float[] acrossScrape = { -1.75f, -1.3f, -1.08f, -0.9f, -0.55f, 0f, 0.55f, 0.9f, 1.08f, 1.3f, 1.75f };
 
         /// <summary>The ground under a place: where it is and which way is up, from a look straight down.</summary>
         static bool Under(Vector3 near, Vector3 up, out Vector3 point, out Vector3 normal)
@@ -74,6 +83,8 @@ namespace Fragmentation
                 body = b;
                 root = new GameObject("Fragmentation marks") { layer = 15 };
                 lat = b.GetLatitude(world); lon = b.GetLongitude(world); alt = b.GetAltitude(world);
+                // (the earth of this place, if it is another's that the marks were last drawn in: none is left that is drawn with it)
+                Recolour();
                 root.transform.position = b.GetWorldSurfacePosition(lat, lon, alt);
                 root.transform.rotation = Quaternion.identity;
                 turned = Quaternion.Inverse(b.transform.rotation);
@@ -112,10 +123,30 @@ namespace Fragmentation
             if (!Under(at, normal, out Vector3 ground, out Vector3 up)) return;
             Anchor(ground);
             if (root == null) return;
+            Vector3 flat = Vector3.ProjectOnPlane(along, up);
+            if (flat.sqrMagnitude < 1e-4f) return;
+            flat.Normalize();
             float now = Time.time;
-            if (!open.TryGetValue(key, out Furrow f) || f == null || now - f.lastTime > 0.6f || f.paved != paved || (ground - f.lastWorld).sqrMagnitude > 64f)
+            bool begin = !open.TryGetValue(key, out Furrow f) || f == null || now - f.lastTime > 0.6f || f.paved != paved;
+            if (!begin)
             {
-                f = new Furrow { key = key, paved = paved, lastWorld = ground - along * Spacing, layer = 0.004f * (furrows.Count % 8), seed = Random.Range(1, 1000) };
+                // Where the wreck touches now, from the scar's end: how far on along its way, and how far to one side. The middle of what
+                // touches jumps about as a wreck's parts touch in turn, the length of the wreck and more: a place behind the scar's end is
+                // ground already marked (a scar laid back along itself lay folded, one fold over another); one far ahead or far aside is
+                // a new scar (the wreck left the ground and came down again).
+                Vector3 step = Vector3.ProjectOnPlane(ground - f.lastWorld, up);
+                float on = Vector3.Dot(step, flat), aside = (step - flat * on).magnitude;
+                if (on > 8f || aside > 6f) begin = true;
+                else
+                {
+                    f.lastTime = now;
+                    if (on < f.spacing) return;
+                }
+            }
+            if (begin)
+            {
+                f = new Furrow { key = key, paved = paved, spacing = paved ? Coarse : Fine, layer = 0.004f * (furrows.Count % 8), seed = Random.Range(1, 1000) };
+                f.lastWorld = ground - flat * f.spacing;
                 f.go = new GameObject(paved ? "Fragmentation scrape" : "Fragmentation scar") { layer = 15 };
                 f.go.transform.SetParent(root.transform, false);
                 f.go.AddComponent<MeshFilter>().sharedMesh = f.mesh = new Mesh { name = "Fragmentation scar" };
@@ -129,20 +160,40 @@ namespace Fragmentation
                 if (furrows.Count > 24) { Furrow old = furrows[0]; furrows.RemoveAt(0); if (old.go != null) Object.Destroy(old.go); if (old.mesh != null) Object.Destroy(old.mesh); }
             }
             f.lastTime = now;
-            if ((ground - f.lastWorld).sqrMagnitude < Spacing * Spacing) return;
-            if (f.at.Count >= 500) return;
-            Vector3 flat = Vector3.ProjectOnPlane(along, up);
-            if (flat.sqrMagnitude < 1e-4f) return;
-            flat.Normalize();
+            if (f.at.Count >= (f.paved ? 500 : 1000)) return;
+            // (the place that touches jumps from side to side as a wreck rocks and tumbles: the mark follows it only part of the way, or it
+            // runs in zigzags)
+            if (f.at.Count > 0)
+            {
+                Vector3 sideways = Vector3.ProjectOnPlane(ground - f.lastWorld, up);
+                sideways -= flat * Vector3.Dot(sideways, flat);
+                ground -= sideways * 0.6f;
+            }
             Transform rt = root.transform;
-            f.at.Add(rt.InverseTransformPoint(ground));
-            f.up.Add(rt.InverseTransformDirection(up));
-            f.side.Add(rt.InverseTransformDirection(Vector3.Cross(up, flat).normalized));
-            f.width.Add(Mathf.Clamp(width, paved ? 0.15f : 0.25f, 9f));
-            f.deep.Add(paved ? 0f : Mathf.Clamp(bite * 0.9f + 0.04f, 0.04f, 0.6f));
-            f.run.Add(f.run.Count == 0 ? 0f : f.run[f.run.Count - 1] + (ground - f.lastWorld).magnitude);
-            f.lift.Add(null);
-            f.lastWorld = ground;
+            float wide = Mathf.Clamp(width, paved ? 0.15f : 0.25f, 9f), deep = paved ? 0f : Mathf.Clamp(bite * 0.9f + 0.04f, 0.04f, 0.6f);
+            float wideWas = f.width.Count > 0 ? f.width[f.width.Count - 1] : wide, deepWas = f.deep.Count > 0 ? f.deep[f.deep.Count - 1] : deep;
+            // (a fast wreck goes a metre and more in a step of the physics: a scar on soil is given its points every 0.4 m all the same,
+            // the ones between laid along the straight line, so that its lips are as lumpy behind a fast wreck as behind a slow one)
+            float length = (ground - f.lastWorld).magnitude;
+            int pieces = f.paved || f.at.Count == 0 ? 1 : Mathf.Clamp(Mathf.FloorToInt(length / f.spacing), 1, 6);
+            Vector3 from = f.lastWorld, upLocal = rt.InverseTransformDirection(up), sideLocal = rt.InverseTransformDirection(Vector3.Cross(up, flat).normalized);
+            for (int k = 1; k <= pieces && f.at.Count < 1000; k++)
+            {
+                float t = k / (float)pieces;
+                Vector3 here = Vector3.Lerp(from, ground, t);
+                float w = Mathf.Lerp(wideWas, wide, t), gone = (here - f.lastWorld).magnitude;
+                f.at.Add(rt.InverseTransformPoint(here));
+                f.up.Add(upLocal);
+                f.side.Add(sideLocal);
+                f.width.Add(w);
+                f.deep.Add(Mathf.Lerp(deepWas, deep, t));
+                f.run.Add(f.run.Count == 0 ? 0f : f.run[f.run.Count - 1] + gone);
+                // (the earth's picture is as wide on the ground as twice the gouge: it is run along the scar at the same scale, whatever the
+                // scar's width there, so that its lumps are as long as they are broad)
+                f.turns.Add(f.turns.Count == 0 ? Random.value : f.turns[f.turns.Count - 1] + gone / Mathf.Clamp(2f * w, 1.2f, 7f));
+                f.lift.Add(null);
+                f.lastWorld = here;
+            }
             f.dirty = true;
             if (dirtyAt <= 0f) dirtyAt = Time.unscaledTime + 0.1f;
         }
@@ -206,7 +257,7 @@ namespace Fragmentation
             const int around = 18;
             float[] ring = { 0f, 0.55f, 0.85f, 1f, 1.25f, 1.9f };
             float[] height = { 0.03f, 0.03f, 0.08f, 0.13f, 0.06f, 0f };    // of the radius (the rim kept low: a crater from a crash is mostly a scar)
-            float[] u = { 0.5f, 0.42f, 0.3f, 0.2f, 0.12f, 0f };
+            float[] u = { 0.5f, 0.4f, 0.27f, 0.19f, 0.13f, 0f };
             var v = new List<Vector3>();
             var uv = new List<Vector2>();
             var tris = new List<int>();
@@ -244,14 +295,16 @@ namespace Fragmentation
         static readonly List<Vector2> buildUV = new List<Vector2>();
         static readonly List<int> buildTris = new List<int>();
 
-        /// <summary>A scar's mesh, as far as it has got: across it the ragged edges, the low lips and the floor, each point on the ground beneath it.</summary>
+        /// <summary>A mark's mesh, as far as it has got: a scar on soil (see BuildFine), or a scrape on paving, a flat band laid on the paving beneath it.</summary>
         static void Build(Furrow f)
         {
             f.dirty = false;
             int n = f.at.Count;
             if (n < 2 || root == null) return;
+            if (!f.paved) { BuildFine(f); return; }
+            float[] across = acrossScrape;
             int cols = across.Length;
-            // (one set of lists for every scar, made again ten times a second while a wreck slides)
+            // (one set of lists for every mark, made again ten times a second while a wreck slides)
             List<Vector3> v = buildV; List<Vector2> uv = buildUV; List<int> tris = buildTris;
             v.Clear(); uv.Clear(); tris.Clear();
             Transform rt = root.transform;
@@ -259,25 +312,74 @@ namespace Fragmentation
             {
                 Vector3 c = f.at[i], s = f.side[i], u = f.up[i];
                 float run = f.run[i];
-                // (not a ruled band: it wanders a little, wider and narrower, its lips higher and lower, its edges torn)
-                float half = f.width[i] * 0.5f * (1f + (f.paved ? 0.05f : 0.14f) * Noise(run * 0.31f, 0.5f, f.seed));
-                if (!f.paved) c += s * (0.06f * half * Noise(run * 0.17f, 1.5f, f.seed));
-                // (the earth pushed aside heaped on either side, lumpy, higher on one side than the other here and there: about half as high as the
-                // scar is deep, the rest thrown out as clods and slabs of turf)
-                float lip = f.paved ? 0f : Mathf.Clamp(0.5f * f.deep[i] + 0.02f, 0.02f, 0.3f);
-                float lipLeft = lip * (0.8f + 0.45f * Noise(run * 0.6f, 2.5f, f.seed)), lipRight = lip * (0.8f + 0.45f * Noise(run * 0.6f, 5.5f, f.seed));
-                // (it begins and ends softly: the first and last points have no lips)
-                float ends = Mathf.Clamp01(Mathf.Min(i, n - 1 - i) / 2f);
+                // (not quite a ruled band: a little wider and narrower as it goes; but not torn at its edges: it is metal dragged over a hard flat face)
+                float half = f.width[i] * 0.5f * (1f + 0.05f * Noise(run * 0.31f, 0.5f, f.seed));
                 float[] lifts = f.lift[i];
                 bool look = lifts == null;
                 if (look) f.lift[i] = lifts = new float[cols];
                 for (int k = 0; k < cols; k++)
                 {
+                    Vector3 p = c + s * (across[k] * half);
+                    if (look)
+                    {
+                        Vector3 world = rt.TransformPoint(p), up = rt.TransformDirection(u);
+                        lifts[k] = Physics.Raycast(world + up * 3f, -up, out RaycastHit hit, 8f, 1 << 15, QueryTriggerInteraction.Ignore) ? Vector3.Dot(hit.point - world, up) : 0f;
+                    }
+                    v.Add(p + u * (lifts[k] + 0.015f + f.layer));
+                    uv.Add(new Vector2(k / (float)(cols - 1), run / 2.5f));
+                }
+            }
+            for (int i = 0; i + 1 < n; i++)
+                for (int k = 0; k + 1 < cols; k++)
+                {
+                    int a = i * cols + k, b = a + 1, c = a + cols, d = c + 1;
+                    tris.Add(a); tris.Add(c); tris.Add(b);
+                    tris.Add(b); tris.Add(c); tris.Add(d);
+                }
+            f.mesh.Clear();
+            f.mesh.SetVertices(v);
+            f.mesh.SetUVs(0, uv);
+            f.mesh.SetTriangles(tris, 0);
+            f.mesh.RecalculateNormals();
+            f.mesh.RecalculateTangents();
+            f.mesh.RecalculateBounds();
+        }
+
+        static readonly float[] endLifts = new float[across.Length];
+
+        static void BuildFine(Furrow f)
+        {
+            int n = f.at.Count, cols = across.Length;
+            List<Vector3> v = buildV; List<Vector2> uv = buildUV; List<int> tris = buildTris;
+            v.Clear(); uv.Clear(); tris.Clear();
+            Transform rt = root.transform;
+            for (int i = 0; i < n; i++)
+            {
+                Vector3 c = f.at[i], s = f.side[i], u = f.up[i];
+                float run = f.run[i];
+                // (it begins and ends in a point, over a metre and a half)
+                float ends = Mathf.Clamp01(Mathf.Min(i, n - 1 - i) / 4f);
+                float half = f.width[i] * 0.5f * (1f + 0.16f * Noise(run * 0.33f, 0.5f, f.seed) + 0.07f * Noise(run * 1.1f, 8.5f, f.seed)) * (0.25f + 0.75f * ends);
+                c += s * (0.07f * half * Noise(run * 0.19f, 1.5f, f.seed));
+                // (the lips: a few centimetres, a quarter as high as the scar is deep, nine centimetres at most; lumps half a metre long, gone
+                // altogether here and there, each side its own. The rest of the earth is thrown: clods, slabs of turf, see Crashes.Slide)
+                float lip = Mathf.Clamp(0.22f * f.deep[i] + 0.015f, 0.015f, 0.09f);
+                float lipLeft = lip * Mathf.Clamp01(0.55f + 0.9f * Noise(run * 1.9f, 2.5f, f.seed)), lipRight = lip * Mathf.Clamp01(0.55f + 0.9f * Noise(run * 1.9f, 5.5f, f.seed));
+                // (the ground's height under each point, looked up once and kept; but not while the point is still within the scar's
+                // narrowing end, where it moves outward as the scar grows on: those are looked up afresh each time)
+                float[] lifts = f.lift[i];
+                bool look = lifts == null;
+                if (look)
+                {
+                    if (i < n - 4) f.lift[i] = lifts = new float[cols];
+                    else lifts = endLifts;
+                }
+                for (int k = 0; k < cols; k++)
+                {
                     float a = across[k];
-                    // (the outer edge torn: in and out by a fifth of the half-width, differently on each side)
-                    // (a scrape on paving is not torn at its edges: it is metal dragged over a hard flat face)
-                    if (!f.paved && (k == 0 || k == cols - 1)) a *= 1f + 0.35f * Noise(run * 1.6f, k == 0 ? 3.5f : 4.5f, f.seed);
-                    else if (!f.paved && (k == 1 || k == cols - 2)) a *= 1f + 0.15f * Noise(run * 1.3f, k == 1 ? 6.5f : 7.5f, f.seed);
+                    // (the lip's crest and foot in and out a little, each side its own way: not a ruled line)
+                    if (k == 1 || k == cols - 2) a *= 1f + 0.1f * Noise(run * 1.5f, k == 1 ? 6.5f : 7.5f, f.seed);
+                    else if (k == 2 || k == cols - 3) a *= 1f + 0.06f * Noise(run * 2.3f, k == 2 ? 3.5f : 4.5f, f.seed);
                     Vector3 p = c + s * (a * half);
                     if (look)
                     {
@@ -285,9 +387,8 @@ namespace Fragmentation
                         lifts[k] = Physics.Raycast(world + up * 3f, -up, out RaycastHit hit, 8f, 1 << 15, QueryTriggerInteraction.Ignore) ? Vector3.Dot(hit.point - world, up) : 0f;
                     }
                     p += u * lifts[k];
-                    float lift = f.paved ? 0.015f + f.layer : 0.03f + f.layer + (k < cols / 2 ? lipLeft : lipRight) * rise[k] * ends;
-                    v.Add(p + u * lift);
-                    uv.Add(new Vector2(f.paved ? (k / (float)(cols - 1)) : texU[k], run / 2.5f));
+                    v.Add(p + u * (0.025f + f.layer + (k < cols / 2 ? lipLeft : lipRight) * rise[k] * ends));
+                    uv.Add(new Vector2(texU[k], f.turns[i]));
                 }
             }
             for (int i = 0; i + 1 < n; i++)
@@ -311,6 +412,7 @@ namespace Fragmentation
         {
             CelestialBody b = FlightGlobals.currentMainBody;
             if (b != null && body == null) { lat = b.GetLatitude(near); lon = b.GetLongitude(near); }
+            Recolour();
             Earth();
             Scrape();
         }
@@ -318,44 +420,105 @@ namespace Fragmentation
         /// <summary>The materials the marks are drawn with (made if they are not yet).</summary>
         public static Material[] Materials() => new[] { Earth(), Scrape() };
 
+#if DEV
+        /// <summary>(development build) A scar laid without a crash, to look at: from a place, so far along a way, so wide and so deep.</summary>
+        public static string Lay(Vector3 from, Vector3 way, Vector3 up, float length, float width, float deep, bool paved)
+        {
+            object key = new object();
+            int before = furrows.Count;
+            for (float d = 0f; d <= length; d += 0.2f)
+            {
+                // (as a wreck's does: not quite straight, deepening over the first metres, a little wider and narrower)
+                Vector3 at = from + way * d + Vector3.Cross(up, way).normalized * (0.5f * Mathf.Sin(d * 0.11f));
+                Track(key, at, up, way, 30f, deep * Mathf.Clamp01(d / 6f), width * (1f + 0.2f * Mathf.Sin(d * 0.23f)), paved);
+            }
+            open.Remove(key);
+            return (furrows.Count - before) + " laid, " + (furrows.Count > 0 ? furrows[furrows.Count - 1].at.Count : 0) + " points";
+        }
+#endif
+
+        static Color earthOf;                  // the colour of the soil the earth's picture was made in
+
         /// <summary>
-        /// Torn earth, across a scar (u) and along it (v, a tile every two and a half metres): the floor dark and streaked the way the wreck
-        /// went, darkest at its edges; the lips lumpy, lighter, with slabs of turf turned over in them; the outer edge torn turf, grass and
-        /// earth mixed. Coloured by the ground of the place.
+        /// The earth's picture is in the colour of the soil of one place: where that is no longer the place (another world, another kind of
+        /// country), it is made again in the new one's. Called where nothing is drawn with it (a flight's start, the first mark of a new place).
+        /// </summary>
+        static void Recolour()
+        {
+            if (earth == null || Soil() == earthOf) return;
+            Texture main = earth.mainTexture, bumps = earth.HasProperty("_BumpMap") ? earth.GetTexture("_BumpMap") : null;
+            Object.Destroy(earth);
+            if (main != null) Object.Destroy(main);
+            if (bumps != null) Object.Destroy(bumps);
+            earth = null;
+        }
+
+        /// <summary>
+        /// Torn earth, across a scar (u: the gouge's floor is the middle half) and along it (v, a turn as long as the picture is wide on the
+        /// ground: twice the gouge's width). The floor: moist earth,
+        /// darker than the ground's top, scored the way the wreck went, darkest under its edges where a trench's wall would be in shade. The
+        /// lips: crumbled earth, lumps of it, a sod turned over here and there. Beyond them the picture is cut out: clods and crumbs thrown on
+        /// the grass, fewer the further out, with the ground showing between them, so that the scar has no edge that a ruler could have drawn.
+        /// Coloured by the earth of the place (see Soil).
         /// </summary>
         static Material Earth()
         {
             if (earth != null) return earth;
             Color soil = Soil(), grass = GrassColour();
-            // (clods are moist earth from below the turf: darker than the ground's dry top)
-            Bits.Earth(new Color(soil.r * 0.7f, soil.g * 0.66f, soil.b * 0.62f), Color.Lerp(grass, soil, 0.25f));
-            const int S = 128;
-            var tex = new Texture2D(S, S, TextureFormat.RGB24, true) { name = "Fragmentation earth", wrapMode = TextureWrapMode.Repeat, filterMode = FilterMode.Trilinear, anisoLevel = 4 };
+            earthOf = soil;
+            // (clods are moist earth from below the turf: a little darker than the ground's dry top, the colour of the scar's lips. At seven
+            // tenths of the soil's colour they were black specks on the grass from fifteen metres)
+            Bits.Earth(new Color(soil.r * 0.8f, soil.g * 0.76f, soil.b * 0.7f), Color.Lerp(grass, soil, 0.25f));
+            Shader cut = Shader.Find("KSP/Alpha/Cutoff Bumped") ?? Shader.Find("KSP/Alpha/Cutoff");
+            const int S = 256;
+            var tex = new Texture2D(S, S, TextureFormat.RGBA32, true) { name = "Fragmentation earth", wrapMode = TextureWrapMode.Repeat, filterMode = FilterMode.Trilinear, anisoLevel = 4 };
             var bump = new Texture2D(S, S, TextureFormat.RGBA32, true, true) { name = "Fragmentation earth bumps", wrapMode = TextureWrapMode.Repeat, filterMode = FilterMode.Trilinear };
             var h = new float[S * S];
             var px = new Color[S * S];
+            // (the lips' crumbled earth a little lighter than the floor's, no more: at nine tenths of the soil's own colour they were pale
+            // borders either side of a dark band, and the scar read as a track with kerbs)
+            Color moist = new Color(soil.r * 0.62f, soil.g * 0.58f, soil.b * 0.55f), crumbled = new Color(soil.r * 0.76f, soil.g * 0.72f, soil.b * 0.68f);
+            Color sod = Color.Lerp(grass, soil, 0.45f) * 0.8f;
             for (int y = 0; y < S; y++)
                 for (int x = 0; x < S; x++)
                 {
-                    float u = x / (float)S, d = Mathf.Abs(u - 0.5f) * 2f;          // 0 in the middle of the floor, 1 at the outer edge
-                    // (tiling along the scar: the noise repeats every tile)
-                    float lump = 0.6f * Tiled(x * 0.11f, y * 0.11f, S * 0.11f, 1) + 0.4f * Tiled(x * 0.31f, y * 0.31f, S * 0.31f, 2);
-                    float fine = Tiled(x * 0.9f, y * 0.9f, S * 0.9f, 3);
-                    float streak = Tiled(x * 0.75f, y * 0.045f, S * 0.045f, 4);         // long along, narrow across: dragged metal's striations
-                    float floor = 1f - Mathf.Clamp01((d - 0.55f) * 6f);                    // the floor (to about the dark edge)
-                    float wall = Mathf.Clamp01(1f - Mathf.Abs(d - 0.55f) * 7f);            // the dark edge where a trench's wall would be in shade
-                    float lipZone = Mathf.Clamp01(1f - Mathf.Abs(d - 0.74f) * 5f);         // the lips
-                    float outer = Mathf.Clamp01((d - 0.82f) * 5.5f);                       // torn turf at the edge
-                    float chunk = Mathf.Clamp01((Tiled(x * 0.17f, y * 0.17f, S * 0.17f, 5) - 0.35f) * 4f);    // slabs of turf turned over
-                    float dark = floor * (0.62f + 0.12f * streak) + (1f - floor) * (0.85f + 0.2f * lump);
-                    dark *= 1f - 0.35f * wall;
-                    dark *= 0.85f + 0.25f * lump + 0.08f * fine;
-                    Color c = soil * dark;
-                    float green = Mathf.Max(outer * Mathf.Clamp01(0.45f + lump), lipZone * chunk * 0.7f);
-                    c = Color.Lerp(c, Color.Lerp(grass, soil, 0.25f) * (0.75f + 0.3f * fine), green);
-                    c.a = 1f;
+                    float u = x / (float)S, side = u < 0.5f ? 0f : 9f;
+                    // (how far out from the middle, 0 to 1; the borders between floor, lip and scatter wander along the scar, each side its own way)
+                    float wander = 0.035f * Tiled(side + 1.5f, y * 0.035f, S * 0.035f, 11) + 0.02f * Tiled(side + 4.5f, y * 0.11f, S * 0.11f, 12) + 0.012f * Tiled(x * 0.2f, y * 0.2f, S * 0.2f, 13);
+                    float d = Mathf.Abs(u - 0.5f) * 2f + wander;
+                    float lump = 0.6f * Tiled(x * 0.06f, y * 0.06f, S * 0.06f, 1) + 0.4f * Tiled(x * 0.16f, y * 0.16f, S * 0.16f, 2);       // lumps a hand and more across
+                    // (crumbs and grains some texels across: nearer one texel each, they showed as little squares from four metres)
+                    float grain = Tiled(x * 0.3f, y * 0.3f, S * 0.3f, 3);
+                    float fine = Tiled(x * 0.55f, y * 0.55f, S * 0.55f, 6);
+                    float streak = 0.6f * Tiled(x * 0.5f, y * 0.022f, S * 0.022f, 4) + 0.4f * Tiled(x * 1.1f, y * 0.05f, S * 0.05f, 7);     // long along, narrow across: scored
+                    // (the floor's own edge in and out with the lumps of the lip that have fallen in over it)
+                    float df = d + 0.045f * lump + 0.015f * grain;
+                    float floor = 1f - Mathf.Clamp01((df - 0.5f) * 14f);                      // the floor of the gouge
+                    float wall = Mathf.Clamp01(1f - Mathf.Abs(df - 0.5f) * 13f);              // in shade under its edge
+                    float lipZone = Mathf.Clamp01((df - 0.5f) * 14f) * (1f - Mathf.Clamp01((d - 0.72f) * 12f));
+                    float outer = Mathf.Clamp01((d - 0.7f) / 0.3f);                           // 0 at the lip's foot, 1 at the edge of the picture
+                    // ---- colour
+                    Color c = Color.Lerp(crumbled * (0.8f + 0.22f * lump + 0.1f * grain + 0.06f * fine), moist * (0.86f + 0.16f * streak + 0.05f * grain + 0.04f * fine + 0.14f * lump), floor);
+                    c *= 1f - 0.4f * wall;
+                    // (a sod turned over in the lip here and there: grass and roots showing through the earth)
+                    float chunk = Mathf.Clamp01((Tiled(x * 0.09f, y * 0.09f, S * 0.09f, 5) - 0.45f) * 5f) * lipZone;
+                    c = Color.Lerp(c, sod * (0.85f + 0.25f * grain), 0.7f * chunk);
+                    // ---- cut out beyond the lip: clods (lumps' tops) and crumbs (grains' tops), fewer the further out; nothing at the very edge
+                    float alpha = 1f;
+                    if (outer > 0f)
+                    {
+                        // (ragged at every size: lumps, crumbs and grains together, against a bar that rises outward. Cut out by the lumps
+                        // alone, the edge was smooth blobs a foot across, like spilt paint from four metres)
+                        float keep = (0.45f * lump + 0.35f * grain + 0.2f * fine - Mathf.Lerp(-0.35f, 0.6f, Mathf.Pow(outer, 0.6f))) * 6f;
+                        if (outer > 0.93f) keep = -1f;
+                        alpha = Mathf.Clamp01(0.5f + keep);
+                        c = Color.Lerp(sod, c, Mathf.Clamp01(0.5f + keep * 2f));
+                    }
+                    c.a = alpha;
                     px[y * S + x] = c;
-                    h[y * S + x] = floor * (0.3f * streak + 0.25f * fine) + (1f - floor) * (lump + 0.3f * fine) + 0.4f * lipZone * chunk;
+                    // (the bumps from the lumps and the scoring, little from the crumbs: the crumbs are a few texels each, and with their
+                    // bumps as strong as the lumps' the floor was lit in little squares, like brickwork, from four metres)
+                    h[y * S + x] = floor * (0.3f * streak + 0.06f * grain + 0.25f * lump) + (1f - floor) * (1f * lump + 0.15f * grain + 0.05f * fine) + 0.5f * chunk - 0.5f * wall;
                 }
             var nm = new Color[S * S];
             for (int y = 0; y < S; y++)
@@ -363,15 +526,18 @@ namespace Fragmentation
                 {
                     float dx = h[y * S + (x + 1) % S] - h[y * S + (x + S - 1) % S];
                     float dy = h[((y + 1) % S) * S + x] - h[((y + S - 1) % S) * S + x];
-                    Vector3 nv = new Vector3(-dx * 2.5f, -dy * 2.5f, 1f).normalized;
+                    Vector3 nv = new Vector3(-dx * 2.4f, -dy * 2.4f, 1f).normalized;
                     // (the game's bump maps are read as a normal map packed in the alpha and green channels)
                     nm[y * S + x] = new Color(nv.y * 0.5f + 0.5f, nv.y * 0.5f + 0.5f, nv.y * 0.5f + 0.5f, nv.x * 0.5f + 0.5f);
                 }
             tex.SetPixels(px); tex.Apply(true, true);
             bump.SetPixels(nm); bump.Apply(true, true);
-            Shader s = Shader.Find("KSP/Bumped") ?? Shader.Find("KSP/Diffuse") ?? Shader.Find("Diffuse");
+            // (the game's own cut-out shader, as its ladders and trusses are drawn; without it the scatter beyond the lips is drawn solid, in
+            // the turf's colour)
+            Shader s = cut ?? Shader.Find("KSP/Bumped") ?? Shader.Find("KSP/Diffuse") ?? Shader.Find("Diffuse");
             earth = new Material(s) { name = "Fragmentation earth", mainTexture = tex };
             if (earth.HasProperty("_BumpMap")) earth.SetTexture("_BumpMap", bump);
+            if (earth.HasProperty("_Cutoff")) earth.SetFloat("_Cutoff", 0.5f);
             return earth;
         }
 
@@ -469,5 +635,24 @@ namespace Fragmentation
         }
 
         public static int Count => furrows.Count + craters.Count;
+
+#if DEV
+        /// <summary>(development build) A place so far along the longest scar on soil (or scrape on paving), which way the scar runs there and which way is up: for pointing the camera at it.</summary>
+        public static bool Along(bool paved, float share, out Vector3 world, out Vector3 way, out Vector3 up, out string what)
+        {
+            world = way = up = Vector3.zero; what = "";
+            Furrow best = null;
+            foreach (Furrow f in furrows)
+                if (f.paved == paved && f.at.Count >= 3 && (best == null || f.run[f.run.Count - 1] >= best.run[best.run.Count - 1])) best = f;
+            if (best == null || root == null) return false;
+            int i = Mathf.Clamp(Mathf.RoundToInt(share * (best.at.Count - 1)), 0, best.at.Count - 2);
+            Transform rt = root.transform;
+            world = rt.TransformPoint(best.at[i]);
+            way = (rt.TransformPoint(best.at[i + 1]) - world).normalized;
+            up = rt.TransformDirection(best.up[i]);
+            what = (paved ? "the scrape" : "the scar") + ", " + best.at.Count + " points and " + best.run[best.run.Count - 1].ToString("F0") + " m long, here " + best.width[i].ToString("F1") + " m wide and " + best.deep[i].ToString("F2") + " m deep (" + furrows.Count + " scars and scrapes in all)";
+            return true;
+        }
+#endif
     }
 }

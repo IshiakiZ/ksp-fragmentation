@@ -27,12 +27,15 @@ namespace Fragmentation
         {
             asked = words ?? "";
             askedAt = Time.time;
+            touchKnown = false;
             return "will throw at the next step: " + asked;
         }
 
         internal static void Pending()
         {
             Tracking();
+            KeepMark();
+            FirstTouch();
             PendingGraze();
             WatchGraze();
             if (asked == null) return;
@@ -162,9 +165,29 @@ namespace Fragmentation
             return otherwise;
         }
 
-        /// <summary>Change the figures crashes are worked out by: "restitution=0.1 toughness=2 bite=0.4 friction=0.5 plough=0.2 scrape=25".</summary>
+        static string asBuilt;
+
+        static string F(float v) => v.ToString("R", CultureInfo.InvariantCulture);
+
+        /// <summary>Every figure Set changes, as it is now, in the words Set takes.</summary>
+        static string Words() =>
+            "restitution=" + F(Crashes.Restitution) + " toughness=" + F(Crashes.Toughness) + " bite=" + F(Crashes.Bite) + " bitepaved=" + F(Crashes.BitePaved) + " friction=" + F(Crashes.Friction) +
+            " frictionpaved=" + F(Crashes.FrictionPaved) + " plough=" + F(Crashes.Plough) + " ploughpaved=" + F(Crashes.PloughPaved) + " graze=" + F(Crashes.GrazeFriction) +
+            " dust=" + (Crashes.FeedDust ? 1 : 0) + " leaks=" + (Crashes.FeedLeaks ? 1 : 0) + " movers=" + (Crashes.FeedMovers ? 1 : 0) + " trails=" + (Crashes.FeedTrails ? 1 : 0) + " fire=" + (Crashes.FeedFire ? 1 : 0) +
+            " ride=" + (Crashes.RideFires ? 1 : 0) + " gouge=" + F(Crashes.Gouge) + " dig=" + F(Crashes.Dig) + " scoop=" + F(Crashes.Scoop) + " anchor=" + F(Crashes.Anchor) + " rolling=" + F(Crashes.Rolling) +
+            " grindsoil=" + F(Crashes.GrindSoil) + " grindpaved=" + F(Crashes.GrindPaved) + " skin=" + F(Crashes.SkinShare) + " steel=" + F(Crashes.FrictionSteel) + " gougesteel=" + F(Crashes.GougeSteel) +
+            " catch=" + F(Crashes.CatchPaved) + " wearpaved=" + F(Crashes.WearPaved) + " wearsoil=" + F(Crashes.WearSoil) + " vault=" + F(Crashes.Vault) + " hold=" + (Crashes.HoldWrecks ? 1 : 0) + " rolls=" + (Crashes.BrakeRolling ? 1 : 0) + " strikes=" + (Crashes.GripStrikes ? 1 : 0) +
+            " hops=" + (Crashes.BridgeHops ? 1 : 0) + " spinlost=" + F(Crashes.SpinLost) + " rollplough=" + F(Crashes.RollPlough) + " lawn=" + (Crashes.TellLawn ? 1 : 0) +
+            " shadows=" + F(Piece.ShadowsFrom) + " bits=" + (Bits.TestNone ? 0 : 1) + " modules=" + (Crashes.TestQuiet ? 0 : 1) + " most=" + Piece.MostOverride;
+
+        /// <summary>
+        /// Change the figures crashes are worked out by: "restitution=0.1 toughness=2 bite=0.4 friction=0.5 plough=0.2 catch=0.2 wearpaved=0.5".
+        /// "reset": every one as this build has it (whatever was tried since it was swapped in). Not settings: nothing is written.
+        /// </summary>
         public static string Set(string words)
         {
+            if (asBuilt == null) asBuilt = Words();
+            if ((words ?? "").Trim().ToLowerInvariant() == "reset") words = asBuilt;
             Crashes.Restitution = Num(words, "restitution", Crashes.Restitution);
             Crashes.Toughness = Num(words, "toughness", Crashes.Toughness);
             Crashes.Bite = Num(words, "bite", Crashes.Bite);
@@ -188,6 +211,19 @@ namespace Fragmentation
             Crashes.GrindSoil = Num(words, "grindsoil", Crashes.GrindSoil);
             Crashes.GrindPaved = Num(words, "grindpaved", Crashes.GrindPaved);
             Crashes.SkinShare = Num(words, "skin", Crashes.SkinShare);
+            Crashes.FrictionSteel = Num(words, "steel", Crashes.FrictionSteel);
+            Crashes.GougeSteel = Num(words, "gougesteel", Crashes.GougeSteel);
+            Crashes.CatchPaved = Num(words, "catch", Crashes.CatchPaved);
+            Crashes.WearPaved = Num(words, "wearpaved", Crashes.WearPaved);
+            Crashes.WearSoil = Num(words, "wearsoil", Crashes.WearSoil);
+            Crashes.Vault = Num(words, "vault", Crashes.Vault);
+            Crashes.HoldWrecks = Num(words, "hold", Crashes.HoldWrecks ? 1 : 0) > 0.5f;
+            Crashes.BrakeRolling = Num(words, "rolls", Crashes.BrakeRolling ? 1 : 0) > 0.5f;
+            Crashes.GripStrikes = Num(words, "strikes", Crashes.GripStrikes ? 1 : 0) > 0.5f;
+            Crashes.BridgeHops = Num(words, "hops", Crashes.BridgeHops ? 1 : 0) > 0.5f;
+            Crashes.SpinLost = Num(words, "spinlost", Crashes.SpinLost);
+            Crashes.RollPlough = Num(words, "rollplough", Crashes.RollPlough);
+            Crashes.TellLawn = Num(words, "lawn", Crashes.TellLawn ? 1 : 0) > 0.5f;
             Piece.ShadowsFrom = Num(words, "shadows", Piece.ShadowsFrom);
             Bits.TestNone = Num(words, "bits", Bits.TestNone ? 0 : 1) < 0.5f;
             Crashes.TestQuiet = Num(words, "modules", Crashes.TestQuiet ? 0 : 1) < 0.5f;
@@ -198,6 +234,8 @@ namespace Fragmentation
         public static string Figures() =>
             "restitution " + Crashes.Restitution + ", toughness " + Crashes.Toughness + ", bite " + Crashes.Bite + "/" + Crashes.BitePaved + ", friction " + Crashes.Friction + "/" + Crashes.FrictionPaved +
             ", plough " + Crashes.Plough + "/" + Crashes.PloughPaved + ", dig " + Crashes.Dig + ", scoop " + Crashes.Scoop + ", anchor " + Crashes.Anchor + ", rolling " + Crashes.Rolling + ", gouge " + Crashes.Gouge + ", grind " + Crashes.GrindSoil + "/" + Crashes.GrindPaved + ", skin " + Crashes.SkinShare + ", graze " + Crashes.GrazeFriction +
+            ", steel " + Crashes.FrictionSteel + "/" + Crashes.GougeSteel + ", catch " + Crashes.CatchPaved + ", wear " + Crashes.WearPaved + "/" + Crashes.WearSoil + ", vault " + Crashes.Vault +
+            (Crashes.HoldWrecks ? "" : ", wrecks not held") + (Crashes.BrakeRolling ? "" : ", rolling not braked") + (Crashes.GripStrikes ? "" : ", strikes not gripped") + (Crashes.BridgeHops ? "" : ", hops not bridged") + ", spin lost " + Crashes.SpinLost + ", rolling ploughs " + Crashes.RollPlough + (Crashes.TellLawn ? "" : ", lawns as paving") +
             "; feeding dust " + Crashes.FeedDust + ", leaks " + Crashes.FeedLeaks + ", movers " + Crashes.FeedMovers + ", trails " + Crashes.FeedTrails + ", fire " + Crashes.FeedFire +
             "; shadows from " + Piece.ShadowsFrom + " m, most " + Piece.Most + "; bits " + !Bits.TestNone + ", wrecks' modules " + !Crashes.TestQuiet;
 
@@ -430,6 +468,36 @@ namespace Fragmentation
             return say.ToString();
         }
 
+        /// <summary>What the space centre's ground masks say under the craft being flown (see Ground.Masks).</summary>
+        public static string Masks()
+        {
+            Vessel v = FlightGlobals.ActiveVessel;
+            if (v == null) return "nothing is being flown";
+            return Ground.Masks(v.CoM, (Vector3)FlightGlobals.getUpAxis(v.mainBody, v.CoMD));
+        }
+
+        /// <summary>
+        /// A scar laid on the ground by the craft being flown, without a crash, to look at: "length=40 width=2.4 deep=0.25 east=20 north=0 heading=90"
+        /// (it begins so far east and north of the craft and runs along that heading; "paved=1": a scrape).
+        /// </summary>
+        public static string Scar(string words)
+        {
+            Vessel v = FlightGlobals.ActiveVessel;
+            if (v == null) return "nothing is being flown";
+            words = words ?? "";
+            CelestialBody body = v.mainBody;
+            Vector3 up = (Vector3)FlightGlobals.getUpAxis(body, v.CoMD);
+            Vector3 east = Vector3.Cross(up, (Vector3)body.transform.up).normalized, north = Vector3.Cross(east, up).normalized;
+            float heading = Num(words, "heading", 90f) * Mathf.Deg2Rad;
+            Vector3 way = north * Mathf.Cos(heading) + east * Mathf.Sin(heading);
+            Vector3 from = v.CoM + east * Num(words, "east", 20f) + north * Num(words, "north", 0f);
+            // (on the ground there, however high the craft is)
+            if (Physics.Raycast(from + up * 100f, -up, out RaycastHit hit, 3000f, 1 << 15, QueryTriggerInteraction.Ignore)) from = hit.point + up * 0.5f;
+            Material[] mats = Marks.Materials();
+            return Marks.Lay(from, way, up, Num(words, "length", 40f), Num(words, "width", 2.4f), Num(words, "deep", 0.25f), Num(words, "paved", 0f) > 0.5f)
+                   + "; the earth is drawn with " + (mats[0] != null && mats[0].shader != null ? mats[0].shader.name : "nothing");
+        }
+
         static GameObject lookMark;
 
         /// <summary>
@@ -442,13 +510,35 @@ namespace Fragmentation
             Vessel flown = FlightGlobals.ActiveVessel;
             if (w == "" || w == "back")
             {
-                if (flown != null) FlightCamera.SetTarget(flown);
+                // (the mark goes only once the camera is off it: the flight camera hangs on what it watches, and a flight whose camera's
+                // mark was destroyed under it is broken until the game is started again)
+                if (flown == null) return "nothing is being flown: the camera stays where it is";
+                FlightCamera.SetTarget(flown);
+                markBody = null;
                 if (lookMark != null) UnityEngine.Object.Destroy(lookMark);
                 return "the camera on the craft flown";
             }
             Transform on = null;
             Vector3 at = Vector3.zero;
             string what = "";
+            lookWay = Vector3.zero; lookUp = Vector3.zero; markBody = null; aimKnown = false;
+            if (w.StartsWith("scar") || w.StartsWith("scrape"))
+            {
+                // ("scar 0.4": so far along the longest scar on soil; "scrape 0.4": along the longest scrape on paving. The mark is an
+                // object of its own, kept where it is on the planet: nothing it could be fixed to outlasts a reload)
+                string[] bits = w.Split(' ');
+                float share = bits.Length > 1 && float.TryParse(bits[1], NumberStyles.Float, CultureInfo.InvariantCulture, out float f) ? f : 0.5f;
+                if (!Marks.Along(w.StartsWith("scrape"), share, out at, out lookWay, out lookUp, out what)) return "no " + bits[0] + " to look at";
+                if (lookMark == null) lookMark = new GameObject("Fragmentation camera mark");
+                lookMark.transform.SetParent(null, false);
+                lookMark.transform.position = at;
+                markBody = FlightGlobals.currentMainBody;
+                if (markBody != null) { markLat = markBody.GetLatitude(at); markLon = markBody.GetLongitude(at); markAlt = markBody.GetAltitude(at); }
+                // (and the place itself, kept apart from the mark: the mark is moved about until the camera's pivot is on the place, see Eye)
+                aimLat = markLat; aimLon = markLon; aimAlt = markAlt; aimKnown = markBody != null;
+                FlightCamera.SetTarget(lookMark.transform);
+                return "the camera on " + what;
+            }
             if (w.StartsWith("piece"))
             {
                 // (the biggest of those at rest; "piece2", "piece3": the next biggest)
@@ -468,6 +558,8 @@ namespace Fragmentation
                     if (o == null || o.vesselType == VesselType.SpaceObject || o.vesselType == VesselType.Flag || o.isEVA || o.rootPart == null) continue;
                     if (w.StartsWith("wreck") && o == flown && FlightGlobals.VesselsLoaded.Count > 1) continue;
                     if (w.StartsWith("flown") && o != flown) continue;
+                    // ("engine": the heaviest craft near that has an engine among its parts and no tank)
+                    if (w.StartsWith("engine") && !EngineOnly(o)) continue;
                     if (best == null || o.totalMass > best.totalMass) best = o;
                 }
                 if (best == null) return "nothing there";
@@ -478,6 +570,135 @@ namespace Fragmentation
             lookMark.transform.position = at;
             FlightCamera.SetTarget(lookMark.transform);
             return "the camera on " + what;
+        }
+
+        static Vector3 lookWay, lookUp;
+        static CelestialBody markBody;
+        static double markLat, markLon, markAlt;
+        static double aimLat, aimLon, aimAlt;
+        static bool aimKnown;
+
+        static bool EngineOnly(Vessel v)
+        {
+            bool engine = false;
+            foreach (Part p in v.parts)
+            {
+                if (p == null) continue;
+                if (Crashes.Propellant(p) > 100.0) return false;
+                foreach (PartModule m in p.Modules) if (m is ModuleEngines) engine = true;
+            }
+            return engine;
+        }
+
+        /// <summary>(every step) a mark on a scar stays where it is on the planet as the scene is shifted about.</summary>
+        static void KeepMark()
+        {
+            if (lookMark == null || markBody == null || lookMark.transform.parent != null) return;
+            lookMark.transform.position = markBody.GetWorldSurfacePosition(markLat, markLon, markAlt);
+        }
+
+        /// <summary>
+        /// Put the camera at a place given from what it was last pointed at (see Look): "along=-4 across=1 up=1.6" is so many metres along the
+        /// way a scar runs there (or north, for anything else), across it (to the right, seen along it; or east), and up.
+        /// </summary>
+        public static string Eye(string words)
+        {
+            FlightCamera cam = FlightCamera.fetch;
+            if (cam == null || lookMark == null) return "nothing is being looked at (see Look)";
+            CelestialBody body = FlightGlobals.currentMainBody;
+            if (body == null) return "no body";
+            Vector3 mark = lookMark.transform.position;
+            // (the place meant. With the craft flown in the air the camera's pivot settles some metres from what it is put on, 6.9 m
+            // when this was written: the mark is moved, a part of the way at each asking, until the pivot is on the place; ask again
+            // until the distance said is small)
+            Vector3 aim = aimKnown && markBody != null ? (Vector3)markBody.GetWorldSurfacePosition(aimLat, aimLon, aimAlt) : mark;
+            Vector3 off = cam.GetPivot().position - aim;
+            if (aimKnown && markBody != null && off.magnitude > 0.2f && off.magnitude < 80f)
+            {
+                Vector3 moved = mark - off * 0.7f;
+                markLat = markBody.GetLatitude(moved); markLon = markBody.GetLongitude(moved); markAlt = markBody.GetAltitude(moved);
+                lookMark.transform.position = moved;
+            }
+            Vector3 up = lookUp.sqrMagnitude > 0.5f ? lookUp : (Vector3)FlightGlobals.getUpAxis(body, aim);
+            Vector3 way = Vector3.ProjectOnPlane(lookWay.sqrMagnitude > 0.5f ? lookWay : (Vector3)body.transform.up, up).normalized;
+            Vector3 right = Vector3.Cross(up, way).normalized;
+            Vector3 eye = aim + way * Num(words ?? "", "along", 0f) + right * Num(words ?? "", "across", 0f) + up * Num(words ?? "", "up", 1.6f);
+            cam.SetCamCoordsFromPosition(eye);
+            return "the camera " + (eye - cam.GetPivot().position).magnitude.ToString("F1") + " m from what it looks at (its pivot is " + off.magnitude.ToString("F1") + " m from the mark)";
+        }
+
+        /// <summary>
+        /// Cut a part of the craft being flown loose from it and fly that instead: "part=Swivel" (the first part whose title has those letters).
+        /// For throwing one part by itself at the ground (an engine, say): Loose, then Throw.
+        /// </summary>
+        public static string Loose(string words)
+        {
+            Vessel v = FlightGlobals.ActiveVessel;
+            if (v == null) return "nothing is being flown";
+            string want = Word(words ?? "", "part");
+            Part p = null;
+            foreach (Part q in v.parts) if (q != null && q.partInfo != null && q.partInfo.title.IndexOf(want, StringComparison.OrdinalIgnoreCase) >= 0) { p = q; break; }
+            if (p == null) return "no part like '" + want + "'";
+            if (p.parent == null) return p.partInfo.title + " is the craft's first part: nothing to cut it from";
+            try
+            {
+                p.decouple();
+                if (p.vessel == null || p.vessel == v) return "it did not come away";
+                FlightGlobals.ForceSetActiveVessel(p.vessel);
+                // (and the rest of the craft taken away, with no explosion: it is the loose part that is being looked at)
+                if (Num(words ?? "", "keep", 0f) < 0.5f) v.Die();
+            }
+            catch (Exception ex) { return "failed: " + ex.Message; }
+            return p.partInfo.title + " is loose, a craft of " + p.vessel.parts.Count + " parts and " + p.vessel.totalMass.ToString("F2") + " t, and is the one flown";
+        }
+
+        /// <summary>Where everything is: each craft near, what it is, how far it lies from where the first of them touched after the last throw, and how fast it is going.</summary>
+        public static string Where()
+        {
+            Vessel flown = FlightGlobals.ActiveVessel;
+            var say = new StringBuilder();
+            if (!touchKnown || touchBody == null) say.Append("(nothing has touched since the last throw: distances are from where the track began)\n");
+            CelestialBody body = touchKnown ? touchBody : trackBody;
+            if (body == null) return "no throw yet";
+            double lat = touchKnown ? touchLat : trackLat, lon = touchKnown ? touchLon : trackLon;
+            foreach (Vessel o in FlightGlobals.VesselsLoaded)
+            {
+                if (o == null || o.vesselType == VesselType.SpaceObject || o.vesselType == VesselType.Flag || o.isEVA || o.parts == null || o.parts.Count == 0) continue;
+                double far = (o.CoMD - body.GetWorldSurfacePosition(lat, lon, o.altitude)).magnitude;
+                if (far > 5000) continue;
+                Part heaviest = null;
+                foreach (Part p in o.parts) if (p != null && (heaviest == null || p.mass + p.GetResourceMass() > heaviest.mass + heaviest.GetResourceMass())) heaviest = p;
+                say.Append(far.ToString("F0")).Append(" m: ").Append(o.GetDisplayName()).Append(o == flown ? " (flown)" : "").Append(", ").Append(heaviest != null && heaviest.partInfo != null ? heaviest.partInfo.title : "?")
+                   .Append(o.parts.Count > 1 ? " and " + (o.parts.Count - 1) + " more" : "").Append(", ").Append(o.totalMass.ToString("F2")).Append(" t, ").Append(o.srf_velocity.magnitude.ToString("F1")).Append(" m/s, ")
+                   .Append(o.radarAltitude.ToString("F1")).Append(" m up\n");
+            }
+            float farthest = 0f; int pieces = 0;
+            foreach (Piece pc in Piece.All)
+            {
+                if (pc == null) continue;
+                pieces++;
+                farthest = Mathf.Max(farthest, (float)((Vector3d)pc.transform.position - body.GetWorldSurfacePosition(lat, lon, body.GetAltitude(pc.transform.position))).magnitude);
+            }
+            say.Append(pieces).Append(" pieces, the farthest ").Append(farthest.ToString("F0")).Append(" m; ").Append(Bits.Count).Append(" bits");
+            return say.ToString();
+        }
+
+        static CelestialBody touchBody;
+        static double touchLat, touchLon;
+        static bool touchKnown;
+
+        /// <summary>(every step) where the first craft to touch anything after a throw touched it.</summary>
+        static void FirstTouch()
+        {
+            if (touchKnown || Crashes.Instance == null) return;
+            foreach (Wreck w in Crashes.Instance.Wrecks)
+            {
+                if (w == null || !w.inContact || w.vessel == null || w.vessel.mainBody == null) continue;
+                touchBody = w.vessel.mainBody;
+                touchLat = touchBody.GetLatitude(w.vessel.CoMD); touchLon = touchBody.GetLongitude(w.vessel.CoMD);
+                touchKnown = true;
+                return;
+            }
         }
 
         // ---- following the wreck: where the heaviest piece of the craft is, every tenth of a second

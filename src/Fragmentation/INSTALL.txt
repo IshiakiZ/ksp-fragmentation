@@ -10,7 +10,7 @@ rings and stringers, engines, shreds, rivets, clods and slabs of turf, every pie
 little smoke. Parts from other mods are torn as the game's own are.
 
 INSTALL
-  Copy the three folders in this download's GameData (Keystone, VolumetricExplosions and
+  Copy the three folders in this download (Keystone, VolumetricExplosions and
   Fragmentation) into your KSP's GameData folder, and start the game. Keystone is the base
   this mod stands on. Volumetric Explosions is not needed, but with it the explosions are
   its fire and smoke, and the leaks, the wreck's fire, the smoke of the pieces and the dust
@@ -31,7 +31,8 @@ GOOD TO KNOW
   is drawn by this mod in place of the game's own drawing of it while the flight lasts.
 
 WHERE IT WORKS
-  Made and tried on a Mac, and tried on Windows 11 (0.1, before 0.2.0's tearing and trails). It has no shader of its own. The fire
+  Made and tried on a Mac, and tried on Windows 11 (0.2.2, with Volumetric Explosions 0.6.3:
+  rockets let fall by the pad and thrown at a wall). It has no shader of its own. The fire
   and smoke are Volumetric Explosions', drawn by that mod's shaders (for OpenGL on a Mac or
   Linux, built for Direct3D on Windows). Nobody has run it on Linux yet.
 

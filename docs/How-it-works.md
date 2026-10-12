@@ -20,6 +20,12 @@ This mod does not patch any of that. It works through the one figure the game's 
   them, and each part tells the mod what it touches. A craft that has come to rest, or has nothing within
   reach, is given its own tolerances back.
 * **Over water** nothing is armed: what a splash does is the game's.
+* **Paving or soil.** What a craft touches is paving where the game tags it so (the runway, a pad, the grounds of each
+  of the space centre's buildings) and soil everywhere else. The game tags the space centre's lawns as it tags its
+  tarmac, so along the runway the mod looks at what is drawn: each section of the runway is one mesh, grass and tarmac
+  blended by a mask, and the mod reads that mask under each part that touches (a dozen times a second): tarmac and
+  the painted lines are paving; the grass of the runway's shoulders and the lawn beyond it is soil. (Since 0.2.2. The
+  grounds round the buildings stay paving, lawns and all: what is drawn there is not what a craft touches.)
 * **A craft that touches down within its parts' tolerances is not hurt**, as in the game. Only what is
   beyond a part's own tolerance counts against it.
 
@@ -40,8 +46,9 @@ thread while the craft is still falling, once for each kind of part (every FL-T8
   not straight lines. Each panel knows its triangles, its neighbours, and the edges it shares with each,
   which is where a tear runs. A tank's skin comes to about forty panels, most a few tens of centimetres
   across.
-* An engine is not cut: its bell, its pump and its mounting each come away whole. Nor is a small mesh on a
-  big part (a hatch, a ladder, a light): it comes away whole too.
+* An engine is not cut: its bell, its pump and its mounting each come away whole (what the ground does to a part
+  like that is under The slide, below). Nor is a small mesh on a big part (a hatch, a ladder, a light): it comes
+  away whole too.
 
 From the first time a part is hurt, the mod draws it in place of the game: the part's own renderers are
 hidden and its panels are drawn as they now are, with what has happened to them (below), wherever a panel is
@@ -72,6 +79,18 @@ If it holds, the craft's going into the ground at that point is stopped, with a 
 the speed), and the ground's bite takes some of its speed along it. If it does not, it is crushed through,
 and the craft goes on into the ground that much slower, for the next part to take.
 
+**A wreck does not bound** (since 0.2.2). Once a craft has been hurt, or is a piece come off one that was,
+whatever speed away from the ground its middle has after a touch, beyond a tenth of the speed it came down at, is
+taken from it: what struck gives way, as thin structure does, and stays folded; it does not throw the wreck up
+again; and it loses three tenths of its turning at each blow, so that it tumbles and does not spin up like a
+wheel. On paving the ground's grip in a blow is the paving's friction on what the ground pushed back with there
+(where before it was a quarter of the small part of that which this mod itself stops), but on no more than
+stopping the wreck's own fall takes, and shared among the parts that strike in the same step: a wreck that tumbles
+along is held back at every strike, as one that slides is all the way. (Reckoned on how fast the corner that struck
+was going, the grip spun a tumbling engine up in two strikes and smashed it with the third, 26 m from its first
+touch: see What was tested.) A craft that comes down within what its parts take is not a wreck, and bounces as the
+game has it.
+
 Every push is given to the craft **as one rigid body**: each part gets the motion it would have as a piece
 of that body. On soil, a hard blow leaves a crater (as wide as the cube root of the blow's energy: a metre
 for a gentle one, several metres for a hard one) with its rim thrown up, and throws clods of earth.
@@ -94,9 +113,25 @@ A craft lying on the ground and moving along it is slowed where it touches:
   below) it stops fast: the test rocket thrown at the grass at 70 m/s came to rest 60 to 80 m from where it first
   touched, 3 to 5 g (see [What was tested](What-was-tested.md)). A round part rolling over soil is held back as a
   wheel in mud is, more as it sinks in.
-* **On paving** (the runway, the pads, and the space centre's hard standing, all of it), by friction that
-  grows from a third of its weight for a smooth skin to nine tenths for a torn one, torn metal gouging, and a
-  little more for speed.
+* **On paving**, by friction that grows from a third of its weight for a smooth skin to nine tenths for a torn
+  one, torn metal gouging, and a little more for speed. **An engine** (or any part with no skin to tear) is steel
+  and all corners: seven tenths of its weight from the first, twelve tenths once it is broken, and it catches on
+  the paving as it goes, the more the faster (0.35 m/s² for each metre a second it is doing: as set, by eye; see
+  [Limits](Limits.md) for what plain friction would do). The friction acts where the engine touches and so turns
+  it over; the catching is taken from its middle.
+* **A wreck that skips along is held back for the moments it is off the ground as well** (since 0.2.2; up to three
+  tenths of a second each): its weight comes down again each time as hard as the time it was up, and the ground's
+  friction is owed on all of it, on paving and on soil; so is an engine's catching. Before, the drag acted only in
+  the steps of the physics in which something happened to touch, and wreckage that skipped lost next to nothing:
+  a pod lay 180 m from where it first touched, having touched the ground for 13 m of them. (Ploughing acts only while a part is in the
+  earth.)
+* **A wreck that rolls or tumbles is held back as one that slides** (since 0.2.2): where the place that touches is
+  going slower than the wreck's middle, the drag is reckoned on the middle's speed and taken from it, and the
+  wreck's turning is slowed by as much. Nothing of a wreck is a wheel: it comes down on its corners and edges at
+  every turn, and each one catches (in soil, digs in). Over soil it ploughs a third as hard as one dragged through
+  the earth does: it digs in at each turn and rolls out again (ploughing in full, the pieces of a rocket that had
+  gone up were stopped dead, 25 m from where it first touched). A craft that is whole and rolls over soil is held
+  back only as a wheel in mud is, as before.
 
 Because the drag acts where the craft touches, below its middle, it turns the craft over that point: a long
 craft slews and, when one end digs in, cartwheels. "How far a wreck slides" divides it. Where the numbers
@@ -112,17 +147,38 @@ rivets behind it on the ground, and now and then a panel, folded up; with its un
 up (above), and what held it to the parts beside it there is gone with it, so that a long rocket comes apart
 into sections along its slide.
 
+**A part with no skin to tear is worn as a whole** (since 0.2.2). An engine's bell, its pump and its mounting are
+whole meshes, and grinding from below takes none of them off an engine that tumbles (the plane it is ground to
+begins again each time it turns over). So a larger share of the drag's work wears the part itself (two fifths on
+paving, three tenths on soil, and as much of the ground's grip in each blow), counted against what crushing it
+right through would take. As the wear grows its meshes come away one after another, the one nearest the ground
+first, each a piece of its own, dented, with shreds and bolts; worn right through, the part goes altogether and
+its last pieces are left strewn where it was dragged, not sent on. A loose Swivel (1.5 t) thrown along the runway
+at 40 m/s lay 35 m on, a fifth of it gone; at 67 m/s, 60 to 78 m on, its mounting ring, its bell and its pipes
+strewn behind it and a half to four fifths of it gone (see [What was tested](What-was-tested.md)). An engine
+crushed right through by a blow goes altogether too (until 0.2.2 one that had hit the ground at 54 m/s lay there
+whole).
+
 The ground is marked. **On soil, a scar**: one for each wreck, as wide as all of it that touches the ground
-(measured across the way it goes, so that a wreck sliding sideways leaves a wide one), its floor torn earth,
-dark and streaked the way the wreck went, darkest along its edges where the walls of a trench would be in
-shade; its lips the earth pushed aside, about half as high as the scar is deep (up to 30 cm), lumpy, higher on
-one side than the other here and there; its outer edges torn turf. The rest of the earth is thrown: clods,
-and slabs of turf (grass on top, earth beneath) thrown aside at the scar's edges. A wreck that hops leaves a
-scar in pieces. **On paving** a dark scrape, and sparks where steel drags (an engine, a heavy fitting: a tank's
-aluminium skin hardly sparks). The game's terrain is built afresh as the view moves, so it is not itself
-changed: these are meshes laid on it, each point set on the ground beneath it, in the earth's colour of the
-place. A mesh cannot go below the ground's own surface (the ground would be drawn over it), so a scar's floor is
-drawn at the ground's level and its depth is in its shading, its lips and the wreck sitting down in it.
+(measured across the way the wreck's middle goes, so that a wreck sliding sideways leaves a wide one): a shallow
+gouge that wanders and widens, beginning and ending in a point. Its floor is moist earth, darker than the ground's
+top, scored the way the wreck went, darkest under its edges where a trench's wall would be in shade. Its lips are
+low: a quarter as high as the scar is deep and nine centimetres at most, lumpy, gone altogether here and there, a
+sod turned over in them now and then. Beyond the lips the scar's picture is cut out (with the game's own cut-out
+shader): clods and crumbs thrown on the grass, fewer the further out, with the ground showing between them, so
+that the scar has no edge a ruler could have drawn. The rest of the earth is thrown: clods, and slabs of turf
+(grass on top, earth beneath) thrown aside at the scar's edges, which lie there a minute or more. A scar is never
+laid back along itself: the middle of what touches jumps about as a wreck's parts touch in turn, the length of
+the wreck and more, and a place behind the scar's end is ground already marked (laid back and forth, a scar lay
+in folds, one over another). A wreck that leaves the ground and comes down again further on leaves a scar in
+pieces. **On paving** a dark scrape; where steel drags (an
+engine, a heavy fitting) a stream of sparks, and chips and bolts of it (a tank's aluminium skin hardly sparks). The
+game's terrain is built afresh as the view moves, so it is not itself changed: these are meshes laid on it (a
+point every 0.4 m along a scar, behind a fast wreck as well, and thirteen across it), each point set on the ground
+beneath it, in the colour of
+the earth of the place (the picture is made again when the place is another world or another kind of country). A
+mesh cannot go below the ground's own surface (the ground would be drawn over it), so a scar's floor is drawn at
+the ground's level and its depth is in its shading, its lips and the wreck sitting down in it.
 
 ## What becomes of a part
 
@@ -146,8 +202,8 @@ drawn at the ground's level and its depth is in its shading, its lips and the wr
   that has lost the skin where it is joined to the part beside it comes away from it, with whatever hangs
   from it, and carries on as a craft of its own. Coming apart where parts are joined is otherwise rare: what
   breaks is the part's own skin.
-* **Almost nothing left** (less than a sixth of its skin), a part goes altogether: what is left of it in
-  pieces, and its explosion if it still carried anything that burns. A part with nothing in it that burns
+* **Almost nothing left** (less than a sixth of its skin; an engine, worn or crushed right through), a part goes
+  altogether: what is left of it in pieces, and its explosion if it still carried anything that burns. A part with nothing in it that burns
   is crushed, not blown up: dust and sparks, and no fireball.
 * A part that is hurt before its skin is cut (a craft that hit within a fraction of a second of being armed),
   or whose meshes cannot be read, breaks up the old way: when hurt past whole, its skin is cut there and then
@@ -200,8 +256,10 @@ mods, this mod says once a frame what else is burning or rising:
   smoke streams out behind it along its way. Each leak likewise: white vapour, or flame and black smoke where it
   caught; fire alone in a vacuum. (The explosions mod can also draw a fire as an engine's flame, in a patch of air
   of its own going along with the craft; this mod asks for that only in its development build: each such patch
-  is worked out and drawn every frame, and four against one cost 30 ms a frame. Asked so, it says what each is:
-  a burning leak a jet, a wreck on fire something burning with no jet, whose smoke rises off it as a plume.)
+  is worked out and drawn every frame. Measured again on 2026-10-10 with Volumetric Explosions 0.6.0: the same
+  crash ran at 28 and 33 frames a second in its first two seconds with them, against 41 and 45 without; see What
+  was tested. Asked so, it says what each is: a burning leak a jet, a wreck on fire something burning with no
+  jet, whose smoke rises off it as a plume.)
 * **The dust and earth** a craft throws up sliding over soil: brown, in the patch of air it is in.
 * **A tank that goes up and stays** is noted to the explosions mod as a part that died would be, with what
   was in it, through the way in added for this mod (`Records.Burst`), so that its blast is made from what was

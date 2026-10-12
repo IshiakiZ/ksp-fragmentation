@@ -252,6 +252,36 @@ namespace Fragmentation
             return count;
         }
 
+        /// <summary>
+        /// A part whose meshes come away whole (an engine: its bell, its pump, its mounting), worn by being dragged and knocked along the
+        /// ground: they go one after another as the wear grows (0 whole, 1 worn right through), the one nearest the ground first, until one
+        /// is left (it goes when the part does). Returns how many came away this time.
+        /// </summary>
+        public int Wear(Vector3 worldAt, Vector3 worldUp, float worn)
+        {
+            if (plan.area <= 0f || worn <= 0f) return 0;
+            Vector3 at = part.transform.InverseTransformPoint(worldAt), way = part.transform.InverseTransformDirection(worldUp).normalized;
+            int count = 0;
+            for (int guard = 0; guard < 6; guard++)
+            {
+                int pick = -1, on = 0;
+                float lowest = float.MaxValue;
+                for (int ci = 0; ci < gone.Length; ci++)
+                {
+                    if (gone[ci] || !plan.cells[ci].whole) continue;
+                    on++;
+                    float low = 0.5f * (Lowest(ci, at, way) + Highest(ci, at, way));
+                    if (low < lowest) { lowest = low; pick = ci; }
+                }
+                if (on <= 1 || pick < 0) break;
+                // (it goes once the wear has got half way through its share of the part)
+                if (1f - Left + 0.5f * plan.cells[pick].area / plan.area > worn) break;
+                Remove(pick, Torn.Ground);
+                count++;
+            }
+            return count;
+        }
+
         /// <summary>A dent where a blow did not break it.</summary>
         public void DentAt(Vector3 worldAt, Vector3 worldInto, float depth, float radius)
         {

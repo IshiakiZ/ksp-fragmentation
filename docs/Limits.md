@@ -25,8 +25,21 @@ What it does not do, or does only roughly. Nothing here is hidden from the other
 * **A torn part stops moving its own pieces**: what the game moves inside a part (an engine's gimbal, a panel
   that unfolds) stays as it was when the part was first torn.
 * **Engines are not cut**: an engine's bell, its pump and its mounting each come away whole (dented when
-  crushed or ground), and grinding hardly takes them off: an engine torn loose on a runway slides on for hundreds
-  of metres, scraping.
+  crushed or ground). Dragged along the ground an engine is worn as a whole and loses them one after another
+  (see [How it works](How-it-works.md)); it is never torn into panels as a tank is, and what is left of it at
+  rest is whole meshes, a mounting ring with a pump on it, say.
+* **On paving an engine is held back harder than plain friction would hold it.** Steel dragged over concrete is
+  held back by half its weight or so, at most by about its whole weight where it gouges: a loose engine doing 65 m/s
+  would go on for two to four hundred metres, and until 0.2.2 it did (240 to 330 m along the runway, most of it
+  rolling and bounding, unmarked). What was asked for is a wreck that does not glide. So besides friction (seven
+  to twelve tenths of its weight) the mod gives an engine what it calls catching, which grows with speed and is by
+  far the greater part when it is fast (some 3 g in all at 67 m/s), and wears it to pieces by the work of both.
+  That is a rule made by eye, not a measurement. "How far a wreck slides" divides all of it: at 3 an engine goes
+  about as far as friction alone would let it.
+* **A wreck does not bound, and does not roll** (since 0.2.2): what strikes is taken to give way, and a wreck that
+  rolls is held back as one that slides. A real wreck does bounce a little, and a wheel torn off a real aeroplane
+  rolls a long way; here a part that is round (a pod, an engine on its mounting ring) no longer does either once
+  it is part of a wreck.
 * **Pieces collide as the convex hulls round them** (a box round a small one): a curved panel lies on the
   ground as its hull does, not in its hollow, and pieces do not break further when they hit. Bits (shreds,
   rivets, foil, clods, slabs of turf) do not collide with anything but the ground beneath where they were thrown
@@ -39,13 +52,19 @@ What it does not do, or does only roughly. Nothing here is hidden from the other
   the ground's level, its depth only in its shading and its low lips, and a wreck sits down into the ground by as
   much as it has dug in. Seen from low down a scar reads as a torn brown band, not a trench. Far off, where the
   game draws the ground more coarsely, a mark may sink into it or stand a little proud of it.
-* **A scar seen from a few metres** shows what it is made of: a mesh a point every 0.8 m along and eleven across, its
-  lips up to 0.3 m high, so that close by they are broad flat facets, like folded brown sheeting, and where a wreck
-  split, two scars cross at slightly different heights. From ten metres and more it reads as torn earth. A wreck that
-  hops leaves its scar in pieces.
+* **A scar is a picture laid on the ground**, a few centimetres proud of it: a mesh a point every 0.4 m along and
+  thirteen across, its lips no more than nine centimetres high, its edge cut out of the picture into clods and
+  crumbs. (Until 0.2.2: a point every 0.8 m, lips up to 0.3 m, and from four metres they were broad smooth facets,
+  "like folded sheeting".) Its floor has no depth of its own. The crumbs beyond its lips are flat, and at a
+  distance they are too small for the picture's coarser copies and are not drawn. Where a wreck split, two scars
+  cross at slightly different heights. A turn of the picture is as long as the scar is wide twice over: along a
+  long straight scar the same lumps come round again.
 * **Friction and ploughing do not know the ground** beyond paving and soil: grass, sand, rock and snow are all
-  soil, and the Mun is soil too. All of the space centre's grounds are paving, its lawns included (they are
-  part of the same hard ground as its aprons in the game).
+  soil, and the Mun is soil too. At the space centre the grass along the runway (its shoulders and the lawn beyond)
+  is told from the tarmac and is soil since 0.2.2; the grounds round its buildings are all still paving, grass or
+  not (looked at by the hangar: what a craft touches there is a collider that is not drawn, and the mod cannot
+  read what is drawn over it). Other launch sites: whatever the
+  game tags as a runway or a pad is paving, the rest soil.
 * **No sound of its own**: the explosions are the game's (or Volumetric Explosions'), and a slide is silent.
 
 ## Kept short
@@ -57,7 +76,10 @@ What it does not do, or does only roughly. Nothing here is hidden from the other
   At most 900 bits, 24 scars and 16 craters at once.
 * **The fire on a burning wreck** is puffs of flame and smoke laid into the air where it burns, not one of the
   explosions mod's riding flames (those cost a patch of air each): up close its flame is a cloud of burning puffs
-  rather than a steady flame.
+  rather than a steady flame. What switching them on costs was measured again on 2026-10-10, with Volumetric
+  Explosions 0.6.0's new flames: the same crash, twice each way, ran at 28 and 33 frames a second in its first two
+  seconds with them against 41 and 45 without, and at 29 to 39 against 42 to 66 in the eight seconds after. They
+  stay off.
 * **Smoke from pieces is laid only where there is a patch of air already** (an explosion's cloud, a wreck's
   trail): a piece flung far from any fire trails nothing (see How it works).
 

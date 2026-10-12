@@ -29,7 +29,7 @@ namespace Fragmentation
                 e.position = at + Random.insideUnitSphere * 0.15f;
                 e.velocity = v * Random.Range(0.3f, 0.8f) + up * Random.Range(0.5f, 4f) + Random.insideUnitSphere * 3f;
                 e.startLifetime = Random.Range(0.2f, 0.7f);
-                e.startSize = Random.Range(0.02f, 0.05f);
+                e.startSize = Random.Range(0.035f, 0.08f);
                 e.startColor = new Color(1f, Random.Range(0.75f, 0.95f), Random.Range(0.4f, 0.6f), 1f);
                 system.Emit(e, 1);
             }
@@ -74,14 +74,15 @@ namespace Fragmentation
             hit.lifetimeLoss = 0.25f;
             var renderer = holder.GetComponent<ParticleSystemRenderer>();
             renderer.renderMode = ParticleSystemRenderMode.Stretch;
-            renderer.velocityScale = 0.03f;
-            renderer.lengthScale = 1.2f;
+            renderer.velocityScale = 0.05f;
+            renderer.lengthScale = 2f;
             renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             renderer.receiveShadows = false;
             Shader s = Shader.Find("KSP/Particles/Additive") ?? Shader.Find("Legacy Shaders/Particles/Additive") ?? Shader.Find("Particles/Additive");
             var m = new Material(s) { name = "Fragmentation sparks" };
             m.mainTexture = Dot();
-            if (m.HasProperty("_TintColor")) m.SetColor("_TintColor", new Color(0.5f, 0.5f, 0.5f, 0.5f));
+            // (brighter than white: by day, on sunlit paving, a spark that is only white is not seen at all)
+            if (m.HasProperty("_TintColor")) m.SetColor("_TintColor", new Color(3f, 2.2f, 1.2f, 0.5f));
             renderer.sharedMaterial = m;
             system.Play(false);
             try { FloatingOrigin.RegisterParticleSystem(system); } catch (System.Exception) { }

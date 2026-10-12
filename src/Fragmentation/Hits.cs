@@ -42,6 +42,7 @@ namespace Fragmentation
         public float pushed;                // what the physics pushed back with, tonne metres a second
         public bool fresh;                  // a contact began in that step
         public bool ground, paved, punched; // on the ground or a building; on paving; through it (the game's own guard against going through the ground put it back)
+        public bool struck;                 // a blow was worked out for it in this step (see Crashes.Blow: its grip is reckoned there, not again in the slide)
         public Part other;                  // a part of another craft it ran into
         public Vector3 otherVelocity;
 
@@ -75,8 +76,11 @@ namespace Fragmentation
         public void Clear()
         {
             touches = 0; point = normal = Vector3.zero; slide = into = pushed = 0f;
-            fresh = ground = paved = punched = false; other = null;
+            fresh = ground = paved = punched = struck = false; other = null;
         }
+
+        float lawnAt = -10f;                // when the ground under it was last looked at (see Ground.Lawn), and what it was
+        bool lawn;
 
         void OnCollisionEnter(Collision c) => Take(c, true);
         void OnCollisionStay(Collision c) => Take(c, false);
@@ -132,6 +136,16 @@ namespace Fragmentation
             Vector3 rel = c.relativeVelocity;
             float each = c.impulse.magnitude / n;
             bool paved = ground && Crashes.Paved(them);
+            // (the space centre's lawns are tagged as its tarmac is: told apart by what is drawn there, looked up a dozen times a second)
+            if (paved && Crashes.TellLawn)
+            {
+                if (Time.fixedTime - lawnAt > 0.08f)
+                {
+                    lawnAt = Time.fixedTime;
+                    lawn = Ground.Lawn(c.GetContact(0).point, part.vessel != null ? (Vector3)part.vessel.upAxis : c.GetContact(0).normal);
+                }
+                if (lawn) paved = false;
+            }
             for (int k = 0; k < n; k++)
             {
                 ContactPoint cp = c.GetContact(k);

@@ -37,6 +37,11 @@ namespace Fragmentation
         static long mineBefore, breakBefore, askedBefore;
         static FieldInfo sitesField;
         public static int NotesThisFrame;
+        /// <summary>When a craft first touched anything since the timing began (seconds after it began; less than nought: not yet).</summary>
+        public static float TouchAt = -1f;
+
+        /// <summary>A craft being watched touched something in this step: the crash proper begins here (see Read).</summary>
+        public static void Touched() { if (on && TouchAt < 0f) TouchAt = Time.unscaledTime - began; }
         static readonly double Ms = 1000.0 / System.Diagnostics.Stopwatch.Frequency;
 
         public static void Start()
@@ -48,6 +53,7 @@ namespace Fragmentation
             for (int k = 0; k < partsBefore.Length; k++) partsBefore[k] = Prof.Ticks[k];
             now = default;
             phase = 0;
+            TouchAt = -1f;
             on = true;
             if (!hooked)
             {
@@ -162,6 +168,25 @@ namespace Fragmentation
                 second = s;
                 sum += rows[k].dt; worst = Mathf.Max(worst, rows[k].dt); n++;
                 for (int q = 0; q < partSum.Length; q++) partSum[q] += parts[k, q];
+            }
+            // (and counted from the first touch: the crash itself, whatever the flight before it took)
+            if (TouchAt >= 0f)
+            {
+                say.Append("first touch ").Append(TouchAt.ToString("F2")).Append(" s in.");
+                float[] edges = { 0f, 2f, 4f, 7f, 10f };
+                for (int e = 0; e + 1 < edges.Length; e++)
+                {
+                    float total = 0f, most = 0f; int frames = 0;
+                    for (int k = 0; k < count; k++)
+                    {
+                        float after = rows[k].at - TouchAt;
+                        if (after < edges[e] || after >= edges[e + 1]) continue;
+                        total += rows[k].dt; most = Mathf.Max(most, rows[k].dt); frames++;
+                    }
+                    if (frames > 0) say.Append(" From ").Append(edges[e].ToString("F0")).Append(" to ").Append(edges[e + 1].ToString("F0")).Append(" s after it: ").Append(frames).Append(" frames, ")
+                                       .Append((1000f * frames / Mathf.Max(1f, total)).ToString("F1")).Append(" fps, worst ").Append(most.ToString("F0")).Append(" ms.");
+                }
+                say.Append('\n');
             }
             var order = new int[count];
             for (int k = 0; k < count; k++) order[k] = k;

@@ -169,6 +169,162 @@ be told from one crash to the next (two runs each way, in the same session). The
 about 200 ms come with or without this mod (the game's own collector, every few tens of seconds); this mod now
 makes much less garbage at a crash, so it brings them on less.
 
+## Round three (2026-10-10, evening): 0.2.2
+
+Asked: a loose engine slid some 400 m along the runway ("a rocket is huge and heavy. It shouldn't slide nearly at all
+without having any damage to the tube"); the scar from four metres looked like folded sheeting; a steep crash, a
+drop onto the pad and a crash in orbit had not been run on the final build; and whether the wreck's fire could be
+drawn as riding flames now. The same test rocket, at midday, every run in a scene loaded afresh, with
+`tools/fragtest.py` (see [Building](Building.md)); frame rates are counted from the first touch, with the frame
+limit on and nothing recording. 0.2.1 was run in the late afternoon; 0.2.2 between ten and eleven that night, on
+the other mods as they then were (Volumetric Explosions 0.6.1, Natural Light 0.10.3): 35 runs, no exception in
+any of them.
+
+### As 0.2.1 was (run)
+
+| Test | What happened |
+| --- | --- |
+| The Swivel (1.5 t) cut loose and thrown alone along the runway at 67 m/s, 3 degrees down, lying level (twice) | It slid on its side: its bell and more were ground off it (half its skin: 49% left, 0.73 t) and it lay 83 and 79 m from where it first touched, on its mounting ring, a dark scrape behind it. |
+| The same, tumbling (nose up 35 degrees, turning) | **326 m** from where it first touched, 143 m of them on the ground: it rolled and bounded on its mounting ring, left the tarmac, and came to rest upright on the lawn, nothing off it (hurt 0.10), a grey scrape in zigzags behind it across the grass. |
+| The same, on end (80 degrees) | 313 m, 93 m of them on the ground; nothing off it (hurt 0.18). |
+| The whole rocket along the runway, 80 m/s, 5 degrees down | Tanks and boosters split and went up in the first second and a half. The Swivel came loose doing 64 m/s and lay 238 m from where it then first touched (350 m from the rocket's first touch), unmarked. The pod with its heat shield (0.98 t) lay **413 m** from the first touch, 75 m of them on the ground: the rest in bounds. Pieces to 446 m. |
+| The whole rocket at the lawn by the hangar (the films' "grass"), 70 m/s, 4 degrees down, tanks full (twice) and a tenth full | Nearly every blow was on "paving": that lawn is the hangar's ground, tagged as the space centre's. The pod section went 197, 398 and 431 m; no scar of torn earth was left. |
+| Straight down: 110 m/s, 35 degrees down, at the lawn by the hangar | Pod, tanks and boosters went up within the first second, as before. The Swivel hit at 54 m/s, "crushed through, hurt 5.50", and was left whole: it lay 262 m on, 1.5 t. (A plain fault: an engine's meshes were only taken off by the plane of a crush, never by how hurt it was.) |
+| In orbit: set at the Mun Lander at 16 m/s | Its nose hit the lander's FL-T800 at 13 m/s: hurt 0.39, "split and is leaking (1166 kg in it, alight)"; hit again 0.3 s later; **0.6 s after splitting it went up** (910 kg), 37% of its skin left, and was torn away from its decoupler. No exception. |
+| A drop onto the pad | Not a test: thrown from where it stood on the pad, the rocket was torn apart by the throw itself (parts at 400 to 540 m/s). `tools/fragtest.py` now lifts it over the pad first: see the last table of this round. |
+
+So the long slides were of three kinds: a round part **rolling** (an engine on its mounting ring is a wheel, and
+nothing held a wheel back on paving); wreckage **bounding** (the mod's drag acts only while something touches, and
+its grip in a blow was a quarter of the small part of the blow that the mod itself stops); and **lawn taken for
+paving**. An engine that slid flat on its side was already ground down and stopped in 80 m.
+
+### What it cost (run, 0.2.1)
+
+The lawn by the hangar, tanks full, each twice:
+
+| Run | 0 to 2 s after the first touch | worst frame | 2 to 4 s | 4 to 7 s | 7 to 10 s |
+| --- | --- | --- | --- | --- | --- |
+| 0.2.1 | 41 and 45 fps | 79 and 56 ms | 42 and 55 | 57 and 66 | 63 and 66 |
+| 0.2.1, the wreck's fire as riding flames | 28 and 33 | 85 and 59 ms | 31 and 29 | 39 and 33 | 39 and 35 |
+
+Riding flames cost 12 to 13 frames a second in the first two seconds and 10 to 33 after: they stay off. (Along the
+runway, once: 38 fps in the first two seconds, worst frame 111 ms. Straight down: 30, 104 ms. In orbit: 53, 72 ms.)
+
+### What 0.2.2's rules cost (run, 2026-10-11)
+
+The night 0.2.2 was made, the same crash ran at 20 to 40 frames a second whichever rules were on, and nothing could
+be said. So it was run again with nothing else using the machine: the lawn by the hangar, tanks full, sixteen times in
+one sitting, the new rules and the old (every development switch of 0.2.2 off, the old scar) by turns, eight runs with
+the new first of each pair and eight with the old first.
+
+| Rules | 0 to 2 s after the first touch, each run | mean | 2 to 4 s, mean |
+| --- | --- | --- | --- |
+| 0.2.2 | 22.6, 29.1, 33.1, 37.0, 40.1, 38.1, 39.4, 33.0 fps | 34.1 (35.7 without the first, the first crash after a build was put in) | 34.0 |
+| as 0.2.1 | 29.7, 32.8, 42.2, 41.9, 27.2, 39.6, 41.6, 34.1 | 36.1 | 34.2 |
+
+One run and the next differ by up to fifteen frames a second with nothing changed; the two sets of rules differ by one
+or two, in the first two seconds, and by nothing after. The worst frame was 46 to 91 ms in every run but the first
+(365 ms). No exception in any. So: no cost that can be told from the spread; and "41 and 45" that afternoon were two
+runs, no more to be relied on than any other two.
+
+### The first pass (run)
+
+An engine worn as a whole by the drag's work, held back by steel's friction and by catching, the space centre's
+lawn told from its tarmac, the scrape laid along the way the wreck's middle goes. The loose Swivel again, twice:
+no exception; the lawn was soil ("hit the ground" where it left the tarmac, and a brown scar there in place of the
+grey scrape); it lost a fifth of its skin (79% left). But it lay **249 and 319 m** from where it first touched, with
+only 32 and 26 m of them on the ground: held back harder where it touched, it tumbled at once and bounded all the
+way. And the whole rocket on open ground 200 m north of the runway (70 m/s, 4 degrees down, tanks a tenth full):
+soil; its main pieces stopped 54 to 57 m from the first touch, as before, but the pod with two parts more went on to
+294 m, 13 m of them on the ground: wreckage bounded over soil as well.
+
+### The second pass as first written (run)
+
+A wreck's bounds taken from it (what strikes gives way); the paving's grip in a blow reckoned on all that the
+ground pushed back with at the place that struck; in a touch, friction on what the physics said the paving pushed
+back with; a wreck that rolls held back by its middle's speed. The loose Swivel again, at 67 m/s:
+
+| Test | What happened |
+| --- | --- |
+| Tumbling | It struck the paving at 6 m/s, then at 17, then at 33 (itself doing only 16 m/s by then): each strike's grip had spun it faster, and the third broke it up, **26 m** from its first touch and four tenths of a second after it. |
+| The same, the touches' friction stood aside | Struck at 16 m/s, then at 58; broke up 26 m on. |
+| The same, the strikes' grip stood aside as well | 95 m, 62 of them on the ground, half of it worn off: about what was meant. |
+| Lying level | From 65 m/s to rest in **34 m**: over 6 g. (The same with the touches' friction stood aside was not a test: thrown from 0.3 m over the runway, the engine was not seen again, twice that night. It is thrown from 1.5 m now.) |
+
+Two rules, then, were far too hard, and were softened. The grip in a blow, reckoned on how fast the corner that
+struck was going, spins a tumbling wreck up until it smashes itself: it is now on no more than stopping the
+wreck's own fall takes, and a wreck loses three tenths of its turning at each blow. And the friction in a touch,
+reckoned on what the physics says the paving pushed back with, was taken for what stopped the level engine in 34 m
+(with a wreck held to the ground the physics pushes back hard at every step; this was not shown by a run of its
+own): it is by the wreck's weight again, owed as well for the moments (up to 0.3 s) the wreck was off the ground.
+
+### As it is: a loose engine on the runway (run)
+
+| Test | What happened |
+| --- | --- |
+| The Swivel alone at 67 m/s, tumbling (three times) | **71, 65 and 72 m** from where it first touched (46 m of the 71 on the ground): it tumbles along throwing sparks, its mounting ring comes off and rolls away, then its bell and its pipes; what is left (0.41 t of 1.5) stops at the end of a dark scrape. Hardest blow 8 m/s. |
+| Lying level | 78 m, 0.29 t left; one piece of it 109 m on. |
+| On end | 60 m, 10 of them on the ground, 0.77 t left; one strike at 32 m/s. |
+| At 40 m/s, tumbling | 35 m, a fifth of it gone (1.20 t left). |
+| The whole rocket along the runway, 80 m/s, 5 degrees down | The Swivel came loose, was worn through and broke up; the pod lay **152 m** from the first touch (it was 413 m), 75 of them on the ground; the tank section 145 m from where it first touched; pieces to 579 m (thrown by the tanks going up). |
+| The whole rocket at the lawn by the hangar (paving to the mod), tanks full (six times) | Where the Swivel came loose it lay 43 to 51 m from where it first touched, worn to 0.31 to 0.77 t. The pod section lay 180 to 234 m from the first touch (0.2.1: 197 to 431 m), on the ground for 13 to 139 m of them: it is thrown clear when the tanks go up, and that lawn is paving. |
+
+A frame of the film (`filmtumble`, 30 frames a second): the ring rolling off behind, orange sparks streaming from
+the engine and from the ring. The sparks were made brighter than white and longer for this: as they were, they
+could not be seen by day on the pale runway.
+
+### As it is: on soil (run)
+
+| Test | What happened |
+| --- | --- |
+| The whole rocket on open ground, 70 m/s, 4 degrees down, tanks a tenth full, pieces that roll ploughing in full | Soil; tanks and a booster went up; the pieces lay 23 to 26 m from the first touch: stopped dead, at some 10 g. Too hard: a wreck that rolls over soil now ploughs a third as hard as one dragged through it. |
+| The same, as it is | The pieces lay **54 to 74 m** from the first touch (the Swivel 54 m, a fifth worn; the pod with two parts more 69 m, where it had gone 294 m; a booster with five parts more 69 m), at the end of one scar 65 m long. |
+| The same, a wreck that rolls ploughing a fifth as hard | 48 to 57 m (one crash is not another: no difference to speak of). |
+| The same with no fuel at all | Nothing went up: the whole rocket (4.8 t dry) slid 54 m in one piece and lay at the end of its scar. |
+| The loose Swivel over open ground | Not run. |
+
+### The scar (run)
+
+Scars laid on open ground without a crash (`scarlook`: 42 m long, 2.4 m and 0.9 m wide), the old drawing and the
+new side by side, each looked at from 4 m (across it, and along it at its end), 15 m and 60 m at midday. The old:
+a brown strip with a raised hem either side, broad smooth facets with saw-toothed pale edges, from every distance
+(the "folded sheeting"). The new: a shallow gouge, its floor dark earth scored along its length, its lips low
+crumbled earth with a sod here and there, its edge ragged, crumbs and clods lying out on the grass, ending in a
+point; from 60 m three thin torn gouges beside three strips of cloth. Three things were mended on the way: a scar
+behind a real wreck was laid back and forth along itself wherever the middle of what touched jumped back (a
+65 m slide had a scar "171 m long", in folds with black creases: it is now never laid backwards); cut out by its
+lumps alone, the edge was smooth blobs a foot across, like spilt paint (worked out in a flat view from 4 m before
+it was seen in the game: it is now ragged at every size); and with its crumbs' bumps as strong as its lumps', the floor was
+lit in little squares, like brickwork, from 4 m (the crumbs' bumps were taken nearly out). The old drawing is
+gone from the mod.
+
+### What it cost (run, that night)
+
+The lawn by the hangar, tanks full; frames a second in the first two seconds after the first touch, and the worst
+frame:
+
+| Rules | Runs |
+| --- | --- |
+| 0.2.2 | 34 (73 ms), 34 (103), 25 (106), 24 (100), 21 (113), 38 (72) |
+| 0.2.1's, in the same build (each new rule stood aside, the old figures set) | 23 (89), 22 (110), 40 (60), 39 (61) |
+| 0.2.1 that afternoon (the other mods as they then were) | 41 (79), 45 (56) |
+
+The same crash ran at anything between 20 and 40 frames a second that night, whichever rules were on: the
+difference between one run and the next is far bigger than any between the rules, and nothing can be said beyond
+that. What was looked at instead is this mod's own work a frame: in the fast runs 6 to 8 ms through the first
+three seconds, in the slow ones 11 to 18 ms, with either set of rules; in both nearly all of it is making torn
+skins and pieces (as before), while the slide's own work, where the new rules are, is 0.1 to 0.4 ms a frame (0.1
+to 0.2 with the old rules) and the marks' 0.1 to 0.4 ms (0.1 to 0.2). Along the runway: 38 and 37 frames a second in the
+first two seconds (it was 38), the worst frame 116 and 77 ms (111). Straight down: 34, 98 ms (30, 104).
+
+### Steep, pad, orbit on the final build (run)
+
+| Test | What happened |
+| --- | --- |
+| Straight down: 110 m/s, 35 degrees down, the lawn by the hangar | Pod, tanks and boosters up in the first second, as before. The Swivel hit at 76 m/s, "crushed through, hurt 11.00", and broke up into two pieces (it had lain whole). The Terrier, dented three times, lay 84 m from where it first touched. |
+| A drop onto the pad: lifted over it, thrown nose down at 25 m/s from 45 m | The parachute and the pod were crushed through at 35 to 37 m/s; the pod split, alight, and went up; the FL-T400 was crushed through, "split and is leaking (2000 kg in it, alight)" and went up with 1,906 kg, 6% of its skin left; its decoupler broke. The lower stage, 15 parts and 18 t with both FL-T800s full, came down on what was left of the upper one and was left lying on the pad unbroken (hardest blow 10 m/s): the upper stage took the fall. A tank going up beside full tanks does not set them off: a blast's harm to the parts round it is the game's, and it does little. 50 frames a second, the worst frame 59 ms. |
+| In orbit: set at the Mun Lander at 16 m/s | The lander's FL-T800 was hit at 13 m/s, hurt 0.40, "split and is leaking (1166 kg in it, alight)", hit again, and **0.8 s after splitting went up** (833 kg), 24% of its skin left, torn away from its decoupler. |
+
 ## On Windows (2026-10-10)
 
 Windows 11, KSP 1.12.5 on Direct3D 11, the development build with every mod of the family, Kerbal X set on the
@@ -185,3 +341,19 @@ pitch=0 height=25"):
   the smoke of the first, 53.
 * Once, a part already gone up in a step was crushed again by a later blow in the same step, and the mod caught a
   `NullReferenceException` in `Hull.CrushAt` (the crash went on). A gone part is now passed over.
+
+**Again on 2026-10-11** (0.2.2 with Volumetric Explosions 0.6.3, the smoke's shader built for Direct3D again that
+day; the development build, by day). A craft put so high over the ground by the pad (the bridge's
+`dev_set_position` with `ease: false`) and let fall, filmed frame by frame from a place held beside it:
+
+* Kerbal X from 32, 110 and 150 m onto the grass: "Rockomax X200-32 Fuel Tank broke up into 4 pieces", "FL-T400
+  Fuel Tank split and is leaking (2000 kg in it, alight)", "FL-T400 Fuel Tank is torn away from FL-T400 Fuel
+  Tank", debris "left as it lies: slid 3 m and lies 6 m from where it first touched". In the pictures: the flash,
+  a ball of fire with flames in brown smoke that grew to fill most of the picture from 190 m off, its shadow on the
+  grass, fires burning under the smoke a quarter of a minute on. From 70 and 85 m the camera was inside the smoke.
+* Kerbal 1 (a pod on a tank and two Hammers) from 45 m onto the road, from 38 m off: two boosters and a tank
+  "split and is leaking ... alight", a booster "went up (2724 kg), 0% of its skin left"; earth and clods thrown
+  up in a ring, a scorched scar, and at the end three fires on the ground at pieces of the wreck, each under its
+  own smoke, a piece of the wreck lying between them.
+* No exception in the game's log. Smoke trailing from single pieces in flight was not made out in any of these:
+  the blast's own smoke hid them from where the camera stood.
