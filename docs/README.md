@@ -6,6 +6,7 @@ solid pieces of itself. It stands on [Keystone](https://github.com/IshiakiZ/ksp-
 [Volumetric Explosions](https://github.com/IshiakiZ/ksp-volumetric-explosions) where it is installed. The short
 version is on the repository's front page.
 
+* [The long description](The-long-description.md): everything the front page said before it was cut short, and what was tried on each system
 * [How it works](How-it-works.md): what the game does with a crash and what this mod does instead; blows, the
   slide, what becomes of a part, the pieces, and what is said to the explosions mod
 * [Research](Research.md): how other games break things, how real aircraft and rockets break up, and every
