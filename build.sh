@@ -34,14 +34,25 @@ if [ -f src/Fragmentation/needs.txt ]; then
   done < src/Fragmentation/needs.txt
 fi
 
+# A companion library for the Harmony mod, where this mod has one (src/FragmentationHarmony): built against this mod and against
+# Harmony, only where Harmony is installed in the game, and loaded by the game only where it is.
+HARMONY="$KSP_DIR/GameData/000_Harmony/0Harmony.dll"
+companion() {  # companion <folder the mod's own library is in>
+  [ -d src/FragmentationHarmony ] || return 0
+  if [ -f "$HARMONY" ]; then WITH="$KEYSTONE:$1/Fragmentation.dll:$HARMONY" compile "$1/FragmentationHarmony.dll" "" src/FragmentationHarmony
+  else rm -f "$1/FragmentationHarmony.dll"; echo "left out: FragmentationHarmony (Harmony is not installed here to build it against)"; fi
+}
+
 case "$MODE" in
   check)
     WITH="$KEYSTONE" compile "$TMP/Fragmentation.dll" "" src/Fragmentation
+    companion "$TMP"
     echo "ok: compiles"
     ;;
   dist|install)
     mkdir -p "$OUT"
     WITH="$KEYSTONE" compile "$OUT/Fragmentation.dll" "" src/Fragmentation
+    companion "$OUT"
     # (the mod's own shaders, if it has any: made by tools/shaderpack/make_bundle.py and kept ready made in src/Fragmentation/Shaders)
     if ls src/Fragmentation/Shaders/*.bundle >/dev/null 2>&1; then mkdir -p "$OUT/PluginData"; cp src/Fragmentation/Shaders/*.bundle "$OUT/PluginData/"; fi
     # (and anything else it keeps in src/Fragmentation/PluginData: a craft file, say)
@@ -49,6 +60,8 @@ case "$MODE" in
     if [ "$MODE" = dist ]; then echo "ok: built into $OUT"; exit 0; fi
     mkdir -p "$KSP_DIR/GameData/Fragmentation"
     cp "$OUT/Fragmentation.dll" "$KSP_DIR/GameData/Fragmentation/"
+    rm -f "$KSP_DIR/GameData/Fragmentation/FragmentationHarmony.dll"
+    [ -f "$OUT/FragmentationHarmony.dll" ] && cp "$OUT/FragmentationHarmony.dll" "$KSP_DIR/GameData/Fragmentation/"
     if [ -d "$OUT/PluginData" ]; then mkdir -p "$KSP_DIR/GameData/Fragmentation/PluginData"; cp -R "$OUT/PluginData/." "$KSP_DIR/GameData/Fragmentation/PluginData/"; fi
     echo "ok: Fragmentation installed to $KSP_DIR/GameData/Fragmentation (restart KSP to load it; it needs Keystone there too)"
     ;;

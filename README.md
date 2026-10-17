@@ -8,6 +8,8 @@ pieces. Parts from other mods break up as the game's own do.
 
 *The same throw with Fragmentation (above) and without it (below).*
 
+![A rocket thrown at the runway breaks up, its tanks going up one after another](src/Fragmentation/img/fragmentation-crash.gif)
+
 For Kerbal Space Program 1.12.x. **Needs [Keystone](https://github.com/IshiakiZ/ksp-keystone)**, a separate download
 ([on SpaceDock](https://spacedock.info/mod/4665/Keystone)): this mod does not load without it.
 [Volumetric Explosions](https://github.com/IshiakiZ/ksp-volumetric-explosions) ([on SpaceDock](https://spacedock.info/mod/4669/Volumetric%20Explosions))
