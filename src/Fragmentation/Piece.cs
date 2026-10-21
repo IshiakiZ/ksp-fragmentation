@@ -233,6 +233,7 @@ namespace Fragmentation
                 }
             }
             all.RemoveAll(p => p == null);
+            bool water = body != null && body.ocean;
             // ---- too many: the oldest go, those lying still first (the list is oldest first)
             int over = all.Count - Most;
             foreach (Piece p in all) if (p.fading >= 0f) over--;
@@ -266,6 +267,24 @@ namespace Fragmentation
                         float most_ = p.rb.mass * Mathf.Sqrt(speed2) / Mathf.Max(dt, 1e-3f) * 0.5f;   // (never more than would stop it in two steps)
                         p.rb.AddForce(-air.normalized * Mathf.Min(kN, most_), ForceMode.Force);
                     }
+                }
+                // ---- under the water (since 0.3.0): held up by what it puts aside (aluminium is 2.7 times as dense as water, steel 7.8: a
+                // piece of skin weighs six tenths of itself there) and slowed hard by the water's drag, so that it sinks slowly, rocking, to the
+                // bottom; and put out, if it was alight.
+                if (water && Fragmentation.Water.Depth((Vector3d)p.rb.worldCenterOfMass) > 0f)
+                {
+                    float dense = p.mass / Mathf.Max(p.area, 0.01f) < 0.05f ? 2.7f : 7.8f;      // (a sheet of skin, or a lump of steel)
+                    p.rb.AddForce(-g * (Fragmentation.Water.Density / dense), ForceMode.Acceleration);
+                    Vector3 through = v + frame;
+                    float s2 = through.sqrMagnitude;
+                    if (s2 > 1e-4f)
+                    {
+                        float kN = 0.5f * Fragmentation.Water.Density * 1000f * 1.1f * 0.5f * p.area * s2 / 1000f;
+                        float most_ = p.rb.mass * Mathf.Sqrt(s2) / Mathf.Max(dt, 1e-3f) * 0.5f;
+                        p.rb.AddForce(-through.normalized * Mathf.Min(kN, most_), ForceMode.Force);
+                    }
+                    p.rb.angularVelocity *= Mathf.Exp(-3f * dt);
+                    p.heat = 0f; p.burns = 0f; p.smokeUntil = 0f;
                 }
                 // ---- coming to rest: still for a second and a half, it is left lying where it is, out of the physics
                 if (v.sqrMagnitude < 0.06f && p.rb.angularVelocity.sqrMagnitude < 0.09f && age > 1.5f)

@@ -165,16 +165,18 @@ namespace Fragmentation
                 catch (Exception) { noMovers = true; }
             }
             // ---- the dust and earth a craft throws up sliding over soil: brown, in the patch of air it is in (none off paving: what a craft
-            // dragged along concrete throws up is grit, not a cloud)
+            // dragged along concrete throws up is grit, not a cloud; nor off bare rock or ice)
             if (FeedDust && !noTrails)
                 foreach (Wreck w in wrecks.Values)
                 {
                     Vessel v = w.vessel;
                     if (v == null || v.packed || !w.inContact || w.dustSpeed < 6f || w.dustPaved) continue;
                     float much = Mathf.Clamp01((w.dustSpeed - 6f) / 40f);
+                    // (as the ground is: brown earth, pale sand, white powder off snow, grey dust off the Mun: see Ground.Feel)
+                    Ground.Feel f = w.feel ?? Ground.Soft;
                     try
                     {
-                        Feed.Trail((int)v.persistentId * 13 + 5, w.dustAt + w.dustNormal * 0.4f, (Vector3d)(w.dustGoing * 0.3f), w.dustSize * 0.6f, 0.25f + 0.5f * much, 0f, 0.3f, 0.85f, 0, 10f);
+                        Feed.Trail((int)v.persistentId * 13 + 5, w.dustAt + w.dustNormal * 0.4f, (Vector3d)(w.dustGoing * 0.3f), w.dustSize * 0.6f * Mathf.Sqrt(f.Dust), Mathf.Min(1f, (0.25f + 0.5f * much) * f.Dust), 0f, f.Shade, f.Warm, 0, f.Kind == Ground.Kind.Snow ? 6f : 10f);
                     }
                     catch (Exception) { noTrails = true; }
                 }

@@ -198,6 +198,10 @@ namespace Fragmentation
             if (!hooked) { ears = ears ?? new Ears(); GameEvents.onFloatingOriginShift.Add(ears.Shifted); hooked = true; }
             if (systems != null && root != null) return;
             root = new GameObject("Fragmentation bits");
+            // (the bits go with the game's moving frame, as the craft do, and are moved every frame: where Smooth Running carries
+            // the craft on between the game's physics steps, the bits are carried on with that frame, all at once by their root;
+            // their particles are kept in the root's own space for that, which is the scene's while it stands at its middle)
+            try { Ride(root.transform); } catch (Exception) { }          // (a Keystone older than 0.9.0 has no Motion: nothing is carried)
             systems = new ParticleSystem[Kinds];
             buffers = new ParticleSystem.Particle[Kinds][];
             shown = new int[Kinds];
@@ -212,6 +216,8 @@ namespace Fragmentation
             // (a slab of turf: grass on top, earth on its sides and underneath; its mesh picks which by where its faces look)
             systems[(int)Kind.Turf].GetComponent<ParticleSystemRenderer>().sharedMaterial.mainTexture = TurfTexture();
         }
+
+        static void Ride(Transform t) => Keystone.Motion.RideWithFrame(t);
 
         static Texture2D turfTexture;
 
@@ -251,7 +257,7 @@ namespace Fragmentation
             ParticleSystem.MainModule main = system.main;
             main.playOnAwake = false;
             main.loop = true;
-            main.simulationSpace = ParticleSystemSimulationSpace.World;
+            main.simulationSpace = ParticleSystemSimulationSpace.Local;
             main.startSpeed = 0f;
             main.gravityModifier = 0f;
             main.startRotation3D = true;

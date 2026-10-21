@@ -66,6 +66,8 @@ namespace Fragmentation
             if (height >= 0f)
             {
                 double ground = body.TerrainAltitude(body.GetLatitude(moved), body.GetLongitude(moved), true);
+                // (over the sea, so high over the water)
+                if (body.ocean && ground < 0.0) ground = Water.Height(moved);
                 double alt = body.GetAltitude(moved);
                 moved += (Vector3d)up * (ground + height - alt);
             }
@@ -85,6 +87,22 @@ namespace Fragmentation
                     if (p != null && p.Resources != null)
                         foreach (PartResource r in p.Resources) if (r != null && r.resourceName != "ElectricCharge") r.amount = r.maxAmount * Mathf.Clamp01(fuel);
             Crashes.Note("thrown: " + speed.ToString("F0") + " m/s, " + (descent * Mathf.Rad2Deg).ToString("F0") + " degrees down, heading " + (heading * Mathf.Rad2Deg).ToString("F0") + ", " + v.radarAltitude.ToString("F0") + " m up");
+        }
+
+        /// <summary>(The properties of shaders by name, "|" between names: for choosing what a mark is drawn with.)</summary>
+        public static string ShaderSays(string names)
+        {
+            var say = new StringBuilder();
+            foreach (string name in (names ?? "").Split('|'))
+            {
+                Shader sh = Shader.Find(name.Trim());
+                say.Append(name.Trim()).Append(": ");
+                if (sh == null) { say.Append("none\n"); continue; }
+                say.Append("queue ").Append(sh.renderQueue).Append(sh.isSupported ? "" : " (unsupported)").Append("; ");
+                for (int i = 0; i < sh.GetPropertyCount(); i++) say.Append(sh.GetPropertyName(i)).Append(" ").Append(sh.GetPropertyType(i)).Append(", ");
+                say.Append("\n");
+            }
+            return say.ToString();
         }
 
         static string grazing;
@@ -177,7 +195,7 @@ namespace Fragmentation
             " ride=" + (Crashes.RideFires ? 1 : 0) + " gouge=" + F(Crashes.Gouge) + " dig=" + F(Crashes.Dig) + " scoop=" + F(Crashes.Scoop) + " anchor=" + F(Crashes.Anchor) + " rolling=" + F(Crashes.Rolling) +
             " grindsoil=" + F(Crashes.GrindSoil) + " grindpaved=" + F(Crashes.GrindPaved) + " skin=" + F(Crashes.SkinShare) + " steel=" + F(Crashes.FrictionSteel) + " gougesteel=" + F(Crashes.GougeSteel) +
             " catch=" + F(Crashes.CatchPaved) + " wearpaved=" + F(Crashes.WearPaved) + " wearsoil=" + F(Crashes.WearSoil) + " vault=" + F(Crashes.Vault) + " hold=" + (Crashes.HoldWrecks ? 1 : 0) + " rolls=" + (Crashes.BrakeRolling ? 1 : 0) + " strikes=" + (Crashes.GripStrikes ? 1 : 0) +
-            " hops=" + (Crashes.BridgeHops ? 1 : 0) + " spinlost=" + F(Crashes.SpinLost) + " rollplough=" + F(Crashes.RollPlough) + " lawn=" + (Crashes.TellLawn ? 1 : 0) +
+            " hops=" + (Crashes.BridgeHops ? 1 : 0) + " spinlost=" + F(Crashes.SpinLost) + " rollplough=" + F(Crashes.RollPlough) + " lawn=" + (Crashes.TellLawn ? 1 : 0) + " ground=" + Crashes.TestGround +
             " shadows=" + F(Piece.ShadowsFrom) + " bits=" + (Bits.TestNone ? 0 : 1) + " modules=" + (Crashes.TestQuiet ? 0 : 1) + " most=" + Piece.MostOverride;
 
         /// <summary>
@@ -224,6 +242,7 @@ namespace Fragmentation
             Crashes.SpinLost = Num(words, "spinlost", Crashes.SpinLost);
             Crashes.RollPlough = Num(words, "rollplough", Crashes.RollPlough);
             Crashes.TellLawn = Num(words, "lawn", Crashes.TellLawn ? 1 : 0) > 0.5f;
+            Crashes.TestGround = (int)Num(words, "ground", Crashes.TestGround);
             Piece.ShadowsFrom = Num(words, "shadows", Piece.ShadowsFrom);
             Bits.TestNone = Num(words, "bits", Bits.TestNone ? 0 : 1) < 0.5f;
             Crashes.TestQuiet = Num(words, "modules", Crashes.TestQuiet ? 0 : 1) < 0.5f;
@@ -235,7 +254,7 @@ namespace Fragmentation
             "restitution " + Crashes.Restitution + ", toughness " + Crashes.Toughness + ", bite " + Crashes.Bite + "/" + Crashes.BitePaved + ", friction " + Crashes.Friction + "/" + Crashes.FrictionPaved +
             ", plough " + Crashes.Plough + "/" + Crashes.PloughPaved + ", dig " + Crashes.Dig + ", scoop " + Crashes.Scoop + ", anchor " + Crashes.Anchor + ", rolling " + Crashes.Rolling + ", gouge " + Crashes.Gouge + ", grind " + Crashes.GrindSoil + "/" + Crashes.GrindPaved + ", skin " + Crashes.SkinShare + ", graze " + Crashes.GrazeFriction +
             ", steel " + Crashes.FrictionSteel + "/" + Crashes.GougeSteel + ", catch " + Crashes.CatchPaved + ", wear " + Crashes.WearPaved + "/" + Crashes.WearSoil + ", vault " + Crashes.Vault +
-            (Crashes.HoldWrecks ? "" : ", wrecks not held") + (Crashes.BrakeRolling ? "" : ", rolling not braked") + (Crashes.GripStrikes ? "" : ", strikes not gripped") + (Crashes.BridgeHops ? "" : ", hops not bridged") + ", spin lost " + Crashes.SpinLost + ", rolling ploughs " + Crashes.RollPlough + (Crashes.TellLawn ? "" : ", lawns as paving") +
+            (Crashes.HoldWrecks ? "" : ", wrecks not held") + (Crashes.BrakeRolling ? "" : ", rolling not braked") + (Crashes.GripStrikes ? "" : ", strikes not gripped") + (Crashes.BridgeHops ? "" : ", hops not bridged") + ", spin lost " + Crashes.SpinLost + ", rolling ploughs " + Crashes.RollPlough + (Crashes.TellLawn ? "" : ", lawns as paving") + (Crashes.TestGround >= 0 ? ", every ground " + (Ground.Kind)Crashes.TestGround : "") +
             "; feeding dust " + Crashes.FeedDust + ", leaks " + Crashes.FeedLeaks + ", movers " + Crashes.FeedMovers + ", trails " + Crashes.FeedTrails + ", fire " + Crashes.FeedFire +
             "; shadows from " + Piece.ShadowsFrom + " m, most " + Piece.Most + "; bits " + !Bits.TestNone + ", wrecks' modules " + !Crashes.TestQuiet;
 
@@ -364,10 +383,80 @@ namespace Fragmentation
             int removed = hull.removed.Count;
             if (Num(words, "pieces", 0f) > 0.5f && Crashes.Instance != null) Crashes.Instance.TestSpawn(h, hull);
             else hull.removed.Clear();
-            return p.partInfo.title + ": " + removed + " panels torn off, " + (hull.Left * 100f).ToString("F0") + "% of its skin left";
+            // (and how high its middle stands over the craft's lowest point, for pointing a camera at it: Photo Studio's floor is there)
+            Vector3 upNow = FlightGlobals.getUpAxis(v.mainBody, mid);
+            float lowest = float.MaxValue;
+            // (by the parts' solid shapes: what is drawn under them, an engine's flame say, reaches far lower)
+            foreach (Part q in v.parts)
+                if (q != null)
+                    foreach (Collider c in q.GetComponentsInChildren<Collider>())
+                        if (c != null && c.enabled && !c.isTrigger && c.gameObject.activeInHierarchy)
+                        {
+                            Bounds b = c.bounds;
+                            lowest = Mathf.Min(lowest, Vector3.Dot(b.center, upNow) - (Mathf.Abs(b.extents.x * upNow.x) + Mathf.Abs(b.extents.y * upNow.y) + Mathf.Abs(b.extents.z * upNow.z)));
+                        }
+            return p.partInfo.title + ": " + removed + " panels torn off, " + (hull.Left * 100f).ToString("F0") + "% of its skin left; its middle " + (Vector3.Dot(mid, upNow) - lowest).ToString("F2") + " m over the craft's lowest point";
         }
 
         static float GrindDepth(Hull hull) => hull.GroundDepth;
+
+        /// <summary>
+        /// (Since 0.3.0.) A tank of the craft being flown split open as in a crash, without one: "part=FL-T400 side=1 lit=0". It leaks from the
+        /// side given (its middle's height), alight or not, and never goes up: what runs out stains the ground under it (and burns there if
+        /// alight). With "say" only: the stains there are.
+        /// </summary>
+        /// <summary>
+        /// (Since 0.3.0.) The marks on the ground through a save and a load without one: "keep" writes them as a save would (a
+        /// development build is never part of the game's own save); "clear" takes them away; "again" reads what was kept and lays it
+        /// again (once the ground is there); "say" counts them.
+        /// </summary>
+        public static string Marked(string words)
+        {
+            string w = (words ?? "").Trim();
+            if (w == "keep") { kept = new ConfigNode("SCENARIO"); Marks.Save(kept); Kept.SaveHulls(kept); return "kept: " + (kept.GetNode("MARKS") != null ? kept.GetNode("MARKS").CountNodes + " marks, " : "no marks, ") + kept.GetNodes("HULL").Length + " torn parts, " + kept.ToString().Length + " characters"; }
+            if (w == "clear") { Marks.Clear(); return "cleared"; }
+            if (w == "mend")
+            {
+                int mended = 0;
+                if (FlightGlobals.ActiveVessel != null)
+                    foreach (Part p in FlightGlobals.ActiveVessel.parts) { Hull h = Hull.Of(p, false); if (h != null) { h.Mend(); mended++; } }
+                return mended + " parts mended";
+            }
+            if (w == "again") { if (kept == null) return "nothing kept"; Marks.Load(kept); Kept.LoadHulls(kept); return "to be laid again"; }
+            return Marks.Count + " marks; " + Kept.Said;
+        }
+
+        static ConfigNode kept;
+
+        public static string Leak(string words)
+        {
+            try
+            {
+                if ((words ?? "").Trim() == "say") return Marks.StainsSaid();
+                Vessel v = FlightGlobals.ActiveVessel;
+                if (v == null || Crashes.Instance == null) return "nothing is being flown";
+                string want = Word(words ?? "", "part");
+                Part p = null;
+                // ("low=1": of the parts like it, the one lowest on the craft, nearest the ground; else the first)
+                bool low = Num(words, "low", 0f) > 0.5f;
+                Vector3 up = FlightGlobals.getUpAxis(v.mainBody, v.CoM);
+                foreach (Part q in v.parts)
+                    if (q != null && q.partInfo != null && (want.Length == 0 || q.partInfo.title.IndexOf(want, StringComparison.OrdinalIgnoreCase) >= 0))
+                    {
+                        if (!low) { p = q; break; }
+                        if (p == null || Vector3.Dot(q.transform.position - p.transform.position, up) < 0f) p = q;
+                    }
+                if (p == null) return "no part like '" + want + "'";
+                Hits h = p.GetComponent<Hits>() ?? p.gameObject.AddComponent<Hits>();
+                h.part = p;
+                float side = Num(words, "side", 1f);
+                HullPlan plan = HullPlan.For(p);
+                float half = plan != null && plan.ready ? 0.5f * (plan.hi.x - plan.lo.x) : 0.6f;
+                Vector3 hole = p.transform.position + p.transform.right * (side * half);
+                return p.partInfo.title + ": " + Crashes.Instance.TestLeak(h, hole, Num(words, "lit", 0f) > 0.5f);
+            }
+            catch (Exception ex) { return "failed: " + ex.Message; }
+        }
 
         static string Word(string words, string key)
         {

@@ -215,6 +215,20 @@ namespace Fragmentation
             spawnFrom = h.part.transform.position;
             Spawn(null, h, hull, true);
         }
+
+        /// <summary>(development build) A part split open as in a crash, its hole on one side (where the test tore it): it leaks, alight or
+        /// not, and (since this is no crash) never goes up, so that what runs out and what it does on the ground can be looked at.</summary>
+        public string TestLeak(Hits h, Vector3 hole, bool lit)
+        {
+            h.touches = 1; h.point = hole;
+            float now = Time.time;
+            StartLeak(null, h, now);
+            if (leaks.Count == 0) return "no leak began";
+            Leak leak = leaks[leaks.Count - 1];
+            leak.lit = lit;
+            leak.until = float.MaxValue;
+            return "leaking " + leak.had.ToString("F0") + " kg" + (lit ? ", alight" : "");
+        }
 #endif
 
         // ================================================================== a part whose skin cannot be read as panels: its old way

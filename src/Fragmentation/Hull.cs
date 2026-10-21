@@ -446,6 +446,67 @@ namespace Fragmentation
             dirty = true; topology = true;
         }
 
+        // ================================================================== (since 0.3.0) kept in the save
+
+        static string F(float f) => f.ToString("R", System.Globalization.CultureInfo.InvariantCulture);
+        static string V(Vector3 v) => F(v.x) + " " + F(v.y) + " " + F(v.z);
+        static float[] Floats(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return new float[0];
+            string[] w = s.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+            var f = new float[w.Length];
+            for (int i = 0; i < w.Length; i++) float.TryParse(w[i], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out f[i]);
+            return f;
+        }
+
+        /// <summary>
+        /// What has happened to this skin, for the game's save (see Kept): which panels are gone and which are burnt, where it was
+        /// crushed and dented and how far, which panels are bent back and how, how far it has dug into the ground. All of it in the
+        /// part's own axes, as it is kept here. Nothing if nothing has happened to it.
+        /// </summary>
+        public ConfigNode Saved()
+        {
+            if (part == null || (!shown && crushes.Count == 0 && dents.Count == 0)) return null;
+            var n = new ConfigNode("HULL");
+            n.AddValue("part", part.persistentId);
+            n.AddValue("name", part.partInfo != null ? part.partInfo.name : part.name);
+            n.AddValue("cells", gone.Length);
+            var g = new System.Text.StringBuilder(); var b = new System.Text.StringBuilder();
+            for (int ci = 0; ci < gone.Length; ci++) { if (gone[ci]) g.Append(ci).Append(' '); if (burnt[ci]) b.Append(ci).Append(' '); }
+            n.AddValue("gone", g.ToString().Trim());
+            n.AddValue("burnt", b.ToString().Trim());
+            foreach (Crush c in crushes) n.AddValue("crush", V(c.at) + " " + V(c.way) + " " + F(c.depth) + " " + F(c.zone));
+            foreach (Dent d in dents) n.AddValue("dent", V(d.at) + " " + V(d.way) + " " + F(d.depth) + " " + F(d.radius));
+            foreach (KeyValuePair<int, Peel> pe in peels) n.AddValue("peel", pe.Key + " " + V(pe.Value.hinge) + " " + V(pe.Value.axis) + " " + F(pe.Value.angle));
+            n.AddValue("bite", F(bite) + " " + V(biteWay));
+            n.AddValue("boxed", boxed || wantBox);
+            return n;
+        }
+
+        /// <summary>
+        /// (Since 0.3.0.) The same done again to this skin from the save, on loading: the panels gone are simply not there (nothing is
+        /// thrown: what was is gone), the rest crushed, dented, bent back and burnt as it was, and drawn so.
+        /// </summary>
+        public bool Restore(ConfigNode n)
+        {
+            if (n == null || plan == null) return false;
+            int.TryParse(n.GetValue("cells"), out int cells);
+            if (cells != gone.Length) return false;                   // (another shape of part since: a variant, a mod changed)
+            foreach (float f in Floats(n.GetValue("gone"))) { int ci = (int)f; if (ci >= 0 && ci < gone.Length && !gone[ci]) { gone[ci] = true; leftArea -= plan.cells[ci].area; } }
+            foreach (float f in Floats(n.GetValue("burnt"))) { int ci = (int)f; if (ci >= 0 && ci < burnt.Length) burnt[ci] = true; }
+            crushes.Clear(); dents.Clear(); peels.Clear();
+            foreach (string s in n.GetValues("crush")) { float[] v = Floats(s); if (v.Length >= 8) crushes.Add(new Crush { at = new Vector3(v[0], v[1], v[2]), way = new Vector3(v[3], v[4], v[5]), depth = v[6], zone = v[7] }); }
+            foreach (string s in n.GetValues("dent")) { float[] v = Floats(s); if (v.Length >= 8) dents.Add(new Dent { at = new Vector3(v[0], v[1], v[2]), way = new Vector3(v[3], v[4], v[5]), depth = v[6], radius = v[7] }); }
+            foreach (string s in n.GetValues("peel")) { float[] v = Floats(s); if (v.Length >= 8 && (int)v[0] < gone.Length) peels[(int)v[0]] = new Peel { hinge = new Vector3(v[1], v[2], v[3]), axis = new Vector3(v[4], v[5], v[6]), angle = v[7] }; }
+            float[] bw = Floats(n.GetValue("bite"));
+            if (bw.Length >= 4) { bite = bw[0]; biteWay = new Vector3(bw[1], bw[2], bw[3]); }
+            for (int ci = 0; ci < reshape.Length; ci++) reshape[ci] = true;
+            measured = false; shapeStale = true; topology = true; dirty = true;
+            Show();
+            if (n.GetValue("boxed") == "True" && !boxed) wantBox = true;
+            return true;
+        }
+
         /// <summary>The panels a change below so far from a place, along a way, may have moved: to be worked out again.</summary>
         void Touch(Vector3 at, Vector3 way, float reach)
         {
@@ -730,6 +791,12 @@ namespace Fragmentation
             }
             Quaternion turn = turned ? Quaternion.AngleAxis(pe.angle, pe.axis) : Quaternion.identity;
             float freq = 2.2f / Mathf.Max(0.15f, plan.edge * 0.5f);
+            // (Since 0.3.0: an engine's meshes are whole, not panels, so its folds were reckoned from a whole bell's size, a metre or
+            // more long: a crushed bell was bent, not crumpled. Thin steel crushed folds in lengths of about 1.8 times the square root
+            // of its radius times its wall, under a tenth of a metre for a bell; on a bell's few points, folds a few to the metre and
+            // a little deeper show as a crumpled cone.)
+            bool steel = plan.engine;
+            if (steel) freq = Mathf.Max(freq, 12f);
             if (fold == null) { fold = new float[plan.p.Length]; for (int f = 0; f < fold.Length; f++) fold[f] = float.NaN; }
             for (int t = 0; t < tris.Length; t++)
             {
@@ -772,7 +839,7 @@ namespace Fragmentation
                         // Folds: thin skin pushed in does not stay smooth. Bulging out more than in, as a tube driven end on folds.
                         float bend = fold[j];
                         if (float.IsNaN(bend)) bend = fold[j] = HullPlan.Noise(x * freq, 3);
-                        float s = (crumple < 0.6f ? crumple : 0.6f) * (0.45f * bend + 0.15f);
+                        float s = (crumple < 0.6f ? crumple : 0.6f) * (0.45f * bend + 0.15f) * (steel ? 1.35f : 1f);
                         dx += n.x * s; dy += n.y * s; dz += n.z * s;
                     }
                     float moved = Mathf.Sqrt(dx * dx + dy * dy + dz * dz);
@@ -960,19 +1027,44 @@ namespace Fragmentation
             return n.sqrMagnitude > 1e-12f ? n.normalized : smooth;
         }
 
-        /// <summary>The inside of a skin, and its torn edges: bare metal, grey and a little mottled (the edges, in the top band of the picture, lighter).</summary>
+        /// <summary>
+        /// The inside of a skin, and its torn edges: bare metal, grey and a little mottled (the edges, in the top band of the picture,
+        /// lighter). (Since 0.3.0, the structure inside: a tank's wall is held round by ring frames, flanges standing in from the
+        /// wall every metre or so, with lighter ribs between, which a torn tank shows through its holes. Painted on the inside as
+        /// it comes round every 1.1 m up the part (its picture's height there): each frame its lit top edge, its face and the
+        /// shadow it throws down the wall, so that it follows every dent and tear of the wall it is on.)
+        /// </summary>
         public static Material Inside()
         {
             if (inside != null) return inside;
             Shader s = Shader.Find("KSP/Specular") ?? Shader.Find("KSP/Diffuse") ?? Shader.Find("Diffuse");
-            var tex = new Texture2D(64, 64, TextureFormat.RGB24, true) { name = "Fragmentation inside", wrapMode = TextureWrapMode.Repeat, filterMode = FilterMode.Bilinear };
-            var px = new Color[64 * 64];
-            for (int y = 0; y < 64; y++)
-                for (int x = 0; x < 64; x++)
+            const int W = 64, H = 128;
+            var tex = new Texture2D(W, H, TextureFormat.RGB24, true) { name = "Fragmentation inside", wrapMode = TextureWrapMode.Repeat, filterMode = FilterMode.Bilinear };
+            var px = new Color[W * H];
+            for (int y = 0; y < H; y++)
+                for (int x = 0; x < W; x++)
                 {
-                    float n = 0.5f + 0.5f * HullPlan.Noise(new Vector3(x * 0.2f, y * 0.2f, 0f), 7) * 0.6f + 0.15f * HullPlan.Noise(new Vector3(x * 0.9f, y * 0.9f, 0f), 9);
-                    float v = y >= 52 ? 0.8f + 0.12f * n : 0.5f + 0.16f * n;
-                    px[y * 64 + x] = new Color(v, v * 0.99f, v * 0.96f);
+                    float n = 0.5f + 0.5f * HullPlan.Noise(new Vector3(x * 0.2f, y * 0.1f, 0f), 7) * 0.6f + 0.15f * HullPlan.Noise(new Vector3(x * 0.9f, y * 0.45f, 0f), 9);
+                    float u = y / (float)H;
+                    float v;
+                    if (u >= 0.82f) v = 0.8f + 0.12f * n;                                   // (the torn edges: bright bare metal)
+                    else
+                    {
+                        v = 0.5f + 0.16f * n;
+                        // (the inside's own height runs 0 to 0.7 of the picture, one frame in each: its flange's lit top, its face,
+                        // the shadow under it; and two lighter ribs between)
+                        float f = u - 0.3f;
+                        if (f >= 0f && f < 0.008f) v = 0.78f + 0.08f * n;
+                        else if (f >= 0.008f && f < 0.03f) v = 0.6f + 0.1f * n;
+                        else if (f >= 0.03f && f < 0.05f) v *= Mathf.Lerp(0.55f, 1f, (f - 0.03f) / 0.02f);
+                        foreach (float rib in new[] { 0.07f, 0.53f })
+                        {
+                            float g = u - rib;
+                            if (g >= 0f && g < 0.005f) v = Mathf.Max(v, 0.66f + 0.06f * n);
+                            else if (g >= 0.005f && g < 0.016f) v *= 0.82f;
+                        }
+                    }
+                    px[y * W + x] = new Color(v, v * 0.99f, v * 0.96f);
                 }
             tex.SetPixels(px);
             tex.Apply(true, true);
@@ -1139,6 +1231,16 @@ namespace Fragmentation
             if (drawn != null) drawn.enabled = false;
             if (drawnObject != null) drawnObject.SetActive(false);
         }
+
+#if DEV
+        /// <summary>(development build) The part as it was before anything happened to its skin: its own renderers and colliders back, this gone (for trying the save's damage done again).</summary>
+        public void Mend()
+        {
+            foreach (Renderer r in hiddenRenderers) if (r != null) r.enabled = true;
+            foreach (Collider c in hidden) if (c != null) c.enabled = true;
+            Destroy(this);
+        }
+#endif
 
         void OnDestroy()
         {

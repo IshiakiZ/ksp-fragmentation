@@ -44,6 +44,76 @@ namespace Fragmentation
             catch (Exception ex) { return "(" + ex.Message + ")"; }
         }
 
+        // ---- what the ground is where it is not paving (since 0.3.0)
+        //
+        // Until 0.3.0 all ground that was not paving was soil: a wreck slid into Kerbin's ice caps, its deserts and the Mun's dust as it
+        // did into the grass by the space centre, and threw up turf in all of them. What the ground is, is read from the world's own
+        // map of its biomes where the wreck is, as the game's science does (which kinds each world's are: KindAt).
+
+        /// <summary>What a wreck slides on, where it is not paving.</summary>
+        public enum Kind { Soil, Sand, Snow, Ice, Rock, Regolith }
+
+        /// <summary>
+        /// How a kind of ground holds a wreck, against soil's (or, where it is Hard, against paving's). From what is measured of each
+        /// (see the wiki's Research page): metal sliding on dry sand some 0.45 to 0.6 of its weight, much as on soil, but sand flows
+        /// round what ploughs it and a wreck sinks deeper; aluminium on snow about 0.35 at 0 C (less as a fast wreck melts what it
+        /// slides on: a quarter here), and a heavy wreck sinks a metre and more into it, packing it down rather than throwing it;
+        /// aluminium on ice about a tenth (sea ice, measured), a smooth blade on melting ice a twenty-fifth; on bare rock more than on
+        /// concrete, rough and catching; the Moon's dust is fine, packed, grains that interlock (a friction angle near fifty degrees),
+        /// which a wreck ploughs harder than soil.
+        /// </summary>
+        public sealed class Feel
+        {
+            public Kind Kind;
+            public bool Hard;                                                   // ploughed by nothing: slid on as paving is
+            public float Friction = 1f, Plough = 1f, Deep = 1f, Scoop = 1f, Anchor = 1f, Bite = 1f;   // against soil's
+            public float Grip = 1f, Gouge = 1f, Catch = 1f, Steel = 1f;        // a Hard one's, against paving's
+            public bool Turf, Sparks, Clods = true;                             // what it throws: slabs of turf; sparks off steel; clods
+            public float Shade = 0.3f, Warm = 0.85f, Dust = 1f;                 // the dust it throws up (Volumetric Explosions): how light, how brown, how much
+        }
+
+        public static readonly Feel Soft = new Feel { Kind = Kind.Soil, Turf = true };
+        static readonly Feel[] feels =
+        {
+            Soft,
+            new Feel { Kind = Kind.Sand, Friction = 0.95f, Plough = 1.35f, Deep = 1.5f, Scoop = 0.8f, Anchor = 0.6f, Bite = 0.9f, Clods = false, Shade = 0.55f, Warm = 0.7f, Dust = 1.4f },
+            new Feel { Kind = Kind.Snow, Friction = 0.5f, Plough = 0.6f, Deep = 2.4f, Scoop = 0.7f, Anchor = 0.4f, Bite = 0.5f, Shade = 0.95f, Warm = 0f, Dust = 1.2f },
+            new Feel { Kind = Kind.Ice, Hard = true, Grip = 0.3f, Gouge = 0.25f, Catch = 0.3f, Steel = 0.25f, Bite = 0.3f, Clods = false, Shade = 0.92f, Warm = 0f, Dust = 0.3f },
+            new Feel { Kind = Kind.Rock, Hard = true, Grip = 1.3f, Gouge = 1.15f, Catch = 1.6f, Steel = 1.1f, Bite = 1f, Clods = false, Sparks = true, Shade = 0.4f, Warm = 0.3f, Dust = 0.4f },
+            new Feel { Kind = Kind.Regolith, Friction = 1.1f, Plough = 1.2f, Deep = 1.2f, Bite = 1f, Clods = false, Shade = 0.35f, Warm = 0.1f, Dust = 1.3f },
+        };
+        public static Feel FeelOf(Kind k) => feels[(int)k];
+
+        /// <summary>
+        /// What the ground of a world is at a place, from its biome there: on Kerbin its ice caps and tundra snow, its deserts, badlands
+        /// and shores sand, its mountains rock, the rest soil; the airless moons' dust (the Mun, Ike, Bop, Pol, Tylo, Dres); Minmus's
+        /// flats ice and its slopes dust; Duna's sand and its poles ice; Laythe's dunes and shores sand; Vall and Eeloo ice; Moho and
+        /// Gilly rock; a world not named, soil (or snow where its biome is called icy, polar or snowy).
+        /// </summary>
+        public static Kind KindAt(CelestialBody b, double lat, double lon)
+        {
+            if (b == null) return Kind.Soil;
+            string biome = "";
+            try { biome = ScienceUtil.GetExperimentBiome(b, lat, lon) ?? ""; } catch (Exception) { }
+            biome = biome.ToLowerInvariant();
+            bool icy = biome.Contains("ice") || biome.Contains("snow") || biome.Contains("polar") || biome.Contains("pole") || biome.Contains("glacier");
+            switch (b.bodyName)
+            {
+                case "Kerbin":
+                    if (icy || biome.Contains("tundra")) return Kind.Snow;
+                    if (biome.Contains("desert") || biome.Contains("badlands") || biome.Contains("shore") || biome.Contains("beach")) return Kind.Sand;
+                    if (biome.Contains("mountain")) return Kind.Rock;
+                    return Kind.Soil;
+                case "Mun": case "Ike": case "Bop": case "Pol": case "Tylo": case "Dres": return Kind.Regolith;
+                case "Minmus": return biome.Contains("flat") ? Kind.Ice : Kind.Regolith;
+                case "Duna": return icy ? Kind.Ice : Kind.Sand;
+                case "Laythe": return icy ? Kind.Snow : biome.Contains("dune") || biome.Contains("shore") || biome.Contains("beach") ? Kind.Sand : Kind.Soil;
+                case "Vall": case "Eeloo": return Kind.Ice;
+                case "Moho": case "Gilly": return Kind.Rock;
+            }
+            return icy ? Kind.Snow : Kind.Soil;
+        }
+
         // ---- the space centre's lawns
         //
         // The space centre's ground is a few big meshes (one for each section of the runway, one round each building), each drawn with

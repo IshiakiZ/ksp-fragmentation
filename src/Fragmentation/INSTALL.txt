@@ -8,9 +8,12 @@ and stops within tens of metres, its torn tanks leaking and going up, its fire a
 with it. It leaves a scar of torn earth, craters, and real pieces of itself: torn panels,
 rings and stringers, engines, shreds, rivets, clods and slabs of turf, every piece trailing a
 little smoke. Parts from other mods are torn as the game's own are.
+From 0.3.0: crashes heard, the ground as the world has it (snow, sand, ice, rock, dust),
+fuel that stains the ground and burns as a pool, strikes on the sea, and wrecks kept in
+the save.
 
 INSTALL
-  This mod needs Keystone, the base it stands on, which is a separate download:
+  This mod needs Keystone 0.9 or later, the base it stands on, which is a separate download:
     https://spacedock.info/mod/4665/Keystone
   Copy Keystone's folder (Keystone) into your KSP's GameData folder, and the Fragmentation
   folder from this download beside it, and start the game. Without Keystone the game does
@@ -29,13 +32,15 @@ GOOD TO KNOW
   While a craft is close enough to the ground or to another craft to hit it at speed, its
   parts' crash tolerance is raised (other mods that show it will show a very large number):
   the mod decides itself what a blow does. A craft that touches down within its parts'
-  tolerances is not hurt, as in the game. What water does is left to the game. A torn part
+  tolerances is not hurt, as in the game. A part striking the sea takes a blow from the
+water it throws up (broadside nearly as on soil, nose first far less). A torn part
   is drawn by this mod in place of the game's own drawing of it while the flight lasts.
 
 WHERE IT WORKS
   Made and tried on a Mac, and tried on Windows 11 (0.2.2, with Volumetric Explosions 0.6.3:
-  rockets let fall by the pad and thrown at a wall). It has no shader of its own. The fire
-  and smoke are Volumetric Explosions', drawn by that mod's shaders (for OpenGL on a Mac or
-  Linux, built for Direct3D on Windows). Nobody has run it on Linux yet.
+  rockets let fall by the pad and thrown at a wall); what 0.3.0 adds has been run on the
+  Mac only so far. It has no shader of its own. The fire and smoke are Volumetric
+  Explosions', drawn by that mod's shaders (for OpenGL on a Mac or Linux, built for
+  Direct3D on Windows). Nobody has run it on Linux yet.
 
 Everything else: https://github.com/IshiakiZ/ksp-fragmentation
