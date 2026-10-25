@@ -32,6 +32,8 @@ is not needed, but the leaks, the fires and the smoke of every piece are drawn o
   tearing.
 * **Kept** (0.3.0): the scars, craters and stains on the ground and the torn parts are in the save, there again after a
   quickload.
+* **Wrecks seen out** (0.4.0, a setting): pieces you are watching go on sliding and tumbling further off than the game keeps
+  them moving, and a crash's worst frames are shorter.
 
 ## Install
 
@@ -52,7 +54,8 @@ slides, how tough parts are, how many pieces there may be and how long they stay
 
 ## Works on
 
-Mac: tried. Windows 11 (Direct3D 11): 0.2.2 tried; what 0.3.0 adds, not yet. Linux: never run.
+Mac: tried. Windows 11 (Direct3D 11): 0.2.2 tried; 0.4.0's crashes made cheaper there (measured and filmed) and its wrecks moving further
+off tried (2026-10-24 and 25). Linux: never run.
 
 **More:** [the long description](https://github.com/IshiakiZ/ksp-fragmentation/wiki/The-long-description) (everything in full, and what
 was tried on each system) and the rest of the [wiki](https://github.com/IshiakiZ/ksp-fragmentation/wiki).

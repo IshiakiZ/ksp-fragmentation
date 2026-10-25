@@ -276,6 +276,21 @@ namespace Fragmentation
 
         public static string Surfaces() => string.Join(" | ", Crashes.Surfaces.ToArray());
 
+        /// <summary>(Since 0.4.0, the development build: each loaded craft, how far from the craft flown, its situation, whether it is
+        /// on rails, and the distance on the ground it is put on rails at (350 m as the game has it; more for a watched wreck).)</summary>
+        public static string Ranges()
+        {
+            Vessel me = FlightGlobals.ActiveVessel;
+            var o = new System.Text.StringBuilder();
+            foreach (Vessel v in FlightGlobals.VesselsLoaded)
+            {
+                if (v == null) continue;
+                float d = me != null ? (float)(v.CoMD - me.CoMD).magnitude : 0f;
+                o.Append(v.vesselName + ": " + d.ToString("F0") + " m off, " + v.situation + (v.packed ? ", ON RAILS" : "") + ", on the ground on rails from " + (v.vesselRanges != null ? v.vesselRanges.landed.pack.ToString("F0") : "?") + " m, " + v.srfSpeed.ToString("F1") + " m/s\n");
+            }
+            return o.Length > 0 ? o.ToString() : "nothing loaded";
+        }
+
         public static string Layers() => Fragmentation.Layers.Table();
 
         /// <summary>"off": the mod stands aside (crashes as the game has them, for comparing); "on": back. Not a setting: nothing is written.</summary>

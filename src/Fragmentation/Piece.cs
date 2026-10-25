@@ -55,40 +55,59 @@ namespace Fragmentation
         MaterialPropertyBlock block;
         int materials;
 
+        /// <summary>A piece's objects, made afresh: what it is drawn with, its collider, its body.</summary>
+        static Piece Fresh()
+        {
+            if (surface == null) surface = new PhysicMaterial("Fragmentation wreckage") { dynamicFriction = 0.55f, staticFriction = 0.75f, bounciness = 0.06f, frictionCombine = PhysicMaterialCombine.Average, bounceCombine = PhysicMaterialCombine.Minimum };
+            var go = new GameObject("Fragmentation piece");
+            go.AddComponent<MeshFilter>();
+            MeshRenderer r = go.AddComponent<MeshRenderer>();
+            r.receiveShadows = true;
+            var shape = new GameObject("Fragmentation piece collider");
+            shape.transform.SetParent(go.transform, false);
+            BoxCollider box0 = shape.AddComponent<BoxCollider>();
+            box0.sharedMaterial = surface;
+            Rigidbody rb0 = go.AddComponent<Rigidbody>();
+            rb0.useGravity = false;                                     // (the game's gravity, or ours: see Step)
+            rb0.drag = 0f;
+            rb0.angularDrag = 0.15f;
+            rb0.maxAngularVelocity = 40f;
+            // (pieces of one part start against each other: pushed apart gently, not flung)
+            rb0.maxDepenetrationVelocity = 1.5f;
+            Piece p = go.AddComponent<Piece>();
+            p.rb = rb0; p.box = box0; p.drawn = r; p.filter = go.GetComponent<MeshFilter>();
+            // (the game's own kind of loose object: see the class's notes)
+            p.po = go.AddComponent<physicalObject>();
+            p.po.maxDistance = 2400f;
+            p.po.origDrag = 0f;
+            p.po.rb = rb0;
+            return p;
+        }
+
+        /// <summary>
+        /// Pieces made ahead and put by out of sight, a few a frame up to so many, while a craft is watched that may crash
+        /// (Crashes.Update): at an impact the pool was empty, and each piece's objects were made afresh in the physics step,
+        /// about a third of a millisecond each, seventy or eighty of them in two or three frames (seen on the PC, 2026-10-24).
+        /// </summary>
+        public static void MakeAhead(int most, int aFrame)
+        {
+            for (int k = 0; k < aFrame && pool.Count < most; k++)
+            {
+                Piece p = Fresh();
+                p.gameObject.SetActive(false);
+                pool.Push(p);
+            }
+        }
+
         /// <summary>A piece made from a mesh already laid out about its own middle, put at a place in the scene and set moving.</summary>
         public static Piece Make(Mesh mesh, Material[] painted, Color[] tints, Vector3 at, Quaternion turn, Vector3 velocity, Vector3 spin, float mass, float area,
                                  float heat, float burns, byte tint, bool white, Part from)
         {
-            if (surface == null) surface = new PhysicMaterial("Fragmentation wreckage") { dynamicFriction = 0.55f, staticFriction = 0.75f, bounciness = 0.06f, frictionCombine = PhysicMaterialCombine.Average, bounceCombine = PhysicMaterialCombine.Minimum };
             int final = Layers.Final, first = Layers.Spawn >= 0 ? Layers.Spawn : final;
             Piece p = null;
-            // (one that has gone before, put back to use: making the objects afresh for every piece cost more than the rest of it)
+            // (one that has gone before, or made ahead, put to use: making the objects afresh for every piece cost more than the rest of it)
             while (pool.Count > 0 && p == null) p = pool.Pop();
-            if (p == null)
-            {
-                var go = new GameObject("Fragmentation piece");
-                go.AddComponent<MeshFilter>();
-                MeshRenderer r = go.AddComponent<MeshRenderer>();
-                r.receiveShadows = true;
-                var shape = new GameObject("Fragmentation piece collider");
-                shape.transform.SetParent(go.transform, false);
-                BoxCollider box0 = shape.AddComponent<BoxCollider>();
-                box0.sharedMaterial = surface;
-                Rigidbody rb0 = go.AddComponent<Rigidbody>();
-                rb0.useGravity = false;                                     // (the game's gravity, or ours: see Step)
-                rb0.drag = 0f;
-                rb0.angularDrag = 0.15f;
-                rb0.maxAngularVelocity = 40f;
-                // (pieces of one part start against each other: pushed apart gently, not flung)
-                rb0.maxDepenetrationVelocity = 1.5f;
-                p = go.AddComponent<Piece>();
-                p.rb = rb0; p.box = box0; p.drawn = r; p.filter = go.GetComponent<MeshFilter>();
-                // (the game's own kind of loose object: see the class's notes)
-                p.po = go.AddComponent<physicalObject>();
-                p.po.maxDistance = 2400f;
-                p.po.origDrag = 0f;
-                p.po.rb = rb0;
-            }
+            if (p == null) p = Fresh();
             GameObject g = p.gameObject;
             // (what is drawn is on the craft's own layer from the first moment, which the cameras draw; the collider, on an
             // object of its own, starts on a layer that runs into the ground alone: see Layers)

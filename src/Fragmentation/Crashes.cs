@@ -32,6 +32,8 @@ namespace Fragmentation
         // ---- where it first touched anything (a place on the planet), for saying how far it went from there
         public bool firstKnown;
         public double firstLat, firstLon;
+        // ---- (since 0.4.0) the game's own ranges for it, while its own are widened (see Crashes.Reach)
+        public VesselRanges rangesWas;
     }
 
     /// <summary>A tank split open: what is in it comes out for a moment before the rest goes up.</summary>
@@ -233,6 +235,7 @@ namespace Fragmentation
             GameEvents.onVesselGoOnRails.Remove(OnRails);
             if (hooked) { try { Feed.Unhook(Asked); } catch (Exception) { } }
             DisarmAll(true);
+            Written();
             Piece.Clear();
             Bits.Clear();
             Marks.Clear();
@@ -356,10 +359,43 @@ namespace Fragmentation
             {
                 Vessel v = w.vessel;
                 if (v == null || v.state == Vessel.State.DEAD || !v.loaded) { wrecks.Remove(v); continue; }
+                // (its ranges widened or given back as the setting and the speed of the craft flown say: see Reach)
+                if ((w.rangesWas != null) != Widened) Reach(w, Widened);
                 // Past it: nothing near to hit, and nothing touched for a while, or come to rest where it lies.
                 if (now > w.riskUntil && (now - w.touched > 1.5f || (w.calm && now - w.calmSince > 2f))) Disarm(w);
             }
         }
+
+        /// <summary>
+        /// (Since 0.4.0.) A wreck kept in the game's physics as far off as a craft in the air is, while it is watched: on the ground or
+        /// the sea the game puts a craft on rails, frozen where it is, once it is 350 m from the craft flown, and a wreck still sliding
+        /// or its pieces still tumbling there stopped dead (Physics Range Extender widens every craft's ranges for that; here only the
+        /// wrecks', and only for as long as they are watched). Out to 2.25 km, as the game has it for a craft flying; given back as
+        /// the game had them when the wreck is left as it lies, and at once for all while the craft flown goes faster than 250 m/s
+        /// (where that mod's wide ranges let craft far off on the ground be thrown about as the game moves its frame of reference).
+        /// </summary>
+        void Reach(Wreck w, bool wide)
+        {
+            Vessel v = w.vessel;
+            if (v == null) return;
+            if (!wide || !Widened)
+            {
+                if (w.rangesWas != null) { v.vesselRanges = w.rangesWas; w.rangesWas = null; }
+                return;
+            }
+            if (w.rangesWas != null || v.vesselRanges == null) return;
+            Vessel flown = FlightGlobals.ActiveVessel;
+            if (flown != null && flown.srfSpeed > 250.0) return;
+            w.rangesWas = v.vesselRanges;
+            var made = new VesselRanges(v.vesselRanges);
+            VesselRanges.Situation air = made.flying;
+            made.landed = new VesselRanges.Situation(air.load, air.unload, Mathf.Max(made.landed.pack, Mathf.Min(air.load, air.unload - 100f)), Mathf.Max(made.landed.unpack, Mathf.Min(air.load - 250f, air.unload - 300f)));
+            made.splashed = new VesselRanges.Situation(air.load, air.unload, Mathf.Max(made.splashed.pack, Mathf.Min(air.load, air.unload - 100f)), Mathf.Max(made.splashed.unpack, Mathf.Min(air.load - 250f, air.unload - 300f)));
+            v.vesselRanges = made;
+        }
+
+        /// <summary>(Since 0.4.0.) Whether wrecks are kept in physics further off (see Reach): the setting, and the craft flown not going fast.</summary>
+        static bool Widened => Frag.FarWrecks != null && Frag.FarWrecks && (FlightGlobals.ActiveVessel == null || FlightGlobals.ActiveVessel.srfSpeed <= 250.0);
 
         static bool ArmedAlready(Vessel v)
         {
@@ -374,6 +410,7 @@ namespace Fragmentation
                 // (a piece just come off a craft that was being watched is a wreck from the first)
                 w = new Wreck { vessel = v, since = now, name = v.GetDisplayName(), wrecked = ArmedAlready(v) };
                 wrecks[v] = w;
+                Reach(w, true);
                 if (!quiet) Note("watching " + w.name + " (" + v.parts.Count + " parts, " + v.srf_velocity.magnitude.ToString("F0") + " m/s, " + v.radarAltitude.ToString("F0") + " m up)");
             }
             if (w.partsSeen != v.parts.Count)
@@ -401,6 +438,26 @@ namespace Fragmentation
             return w;
         }
 
+        /// <summary>
+        /// One untouched part's skin of a craft that may crash drawn ahead, a frame (see Hull.Prepare): its first drawing, the most work its
+        /// skin takes, is then not in the frame of the first blow. Only in a frame that was not slow, and only parts whose skin is cut.
+        /// </summary>
+        void Prepare()
+        {
+            if (Time.unscaledDeltaTime > 1f / 40f) return;
+            foreach (Wreck w in wrecks.Values)
+                foreach (Hits h in w.hits)
+                {
+                    if (h == null || h.part == null || h.gone || h.doomed || h.plan == null || !h.plan.ready || h.plan.failed) continue;
+                    if (h.hull != null && (h.hull.prepared || h.hull.shown)) continue;
+                    long t = Prof.Now;
+                    Hull hull = HullFor(h);
+                    if (hull != null) hull.Prepare();
+                    Prof.Add(Prof.Prepared, t);
+                    return;
+                }
+        }
+
         void Disarm(Wreck w)
         {
             if (w.vessel != null)
@@ -409,7 +466,11 @@ namespace Fragmentation
                     Hits h = p != null ? p.GetComponent<Hits>() : null;
                     if (h != null) h.Disarm();
                 }
+            // (skins drawn ahead that nothing touched are let go: the craft came through)
+            foreach (Hits h in w.hits)
+                if (h != null && h.hull != null && !h.hull.shown && h.hull.prepared) { Destroy(h.hull); h.hull = null; }
             foreach (Hits h in w.hits) if (h != null) h.Disarm();
+            Reach(w, false);
             if (w.vessel != null) wrecks.Remove(w.vessel);
             // (what it was and how far it went, for the log: a line that must never stop a craft being given its tolerances back)
             string what = "", went = "";
@@ -518,6 +579,7 @@ namespace Fragmentation
             float dt = Time.fixedDeltaTime, now = Time.fixedTime;
             long began = System.Diagnostics.Stopwatch.GetTimestamp();
             stepBegan = began;
+            if (Time.frameCount != budgetFrame) { budgetFrame = Time.frameCount; frameSpent = 0; didBreak = didSever = didSpawn = didLater = didGoUp = false; }
             try
             {
                 long t = Prof.Now;
@@ -531,7 +593,9 @@ namespace Fragmentation
                 Pools(dt);
                 Prof.Add(Prof.Leaks, t);
                 t = Prof.Now;
-                BreakSome();
+                // (a part going and a part let go each split the craft, which is the game's own heavy work: one of the two a frame at
+                // least, the other waiting where the budget is spent, and which comes first taking turns frame by frame)
+                if ((budgetFrame & 1) == 0) { BreakSome(); SeverSome(); } else { SeverSome(); BreakSome(); }
                 RunLater();
                 SpawnSome();
                 Prof.Add(Prof.Break, t);
@@ -546,8 +610,26 @@ namespace Fragmentation
                 if (!complained) Debug.LogError("[Fragmentation] " + ex);
                 complained = true;
             }
-            FixedTicks += System.Diagnostics.Stopwatch.GetTimestamp() - began;
+            Written();
+            long spent = System.Diagnostics.Stopwatch.GetTimestamp() - began;
+            FixedTicks += spent;
+            frameSpent += spent;
         }
+
+        // ---- one budget a frame for what can wait
+        // (A frame of a crash has two physics steps, or three; each step had its own budgets, and did at least one of each kind of
+        // thing that can wait whatever it had spent: up to 70 ms of this mod's in one frame on the PC, 2026-10-24, the worst frame
+        // 131 ms. A part going costs the game itself 5 to 18 ms of that (Prof "the game's parting": its own destroying, the craft it
+        // splits into, every mod hearing of them). Now what can wait (parts going, parts let go, the pieces of what was torn off,
+        // what is left over of a blow) shares one budget a frame: past it, the rest waits for the next frame. And at least one of
+        // each kind a frame, however busy the frame, so that nothing waits long: a dozen parts going at once go over a few frames.)
+        const float FrameBudgetMs = 8f;
+        int budgetFrame = -1;
+        long frameSpent;
+        bool didBreak, didSever, didSpawn, didLater, didGoUp;
+
+        /// <summary>Whether this frame's budget for what can wait is spent (this mod's time in its earlier steps of the frame, and in this one so far).</summary>
+        bool Spent() => frameSpent + (System.Diagnostics.Stopwatch.GetTimestamp() - stepBegan) > (long)(System.Diagnostics.Stopwatch.Frequency * (double)FrameBudgetMs / 1000.0);
 
         float reportAt;
 
@@ -582,6 +664,9 @@ namespace Fragmentation
             long began = System.Diagnostics.Stopwatch.GetTimestamp();
             try { long t = Prof.Now; Bits.Step(Time.deltaTime); Prof.Add(Prof.Bits, t); t = Prof.Now; Marks.Restore(); Kept.Restore(); Marks.Step(); Prof.Add(Prof.Marks, t); Sounds.Frame(); }
             catch (Exception ex) { if (!complained) Debug.LogError("[Fragmentation] " + ex); complained = true; }
+            // (pieces made ahead while a craft that may crash is watched: see Piece.MakeAhead)
+            if (wrecks.Count > 0 && Frag.On != null && Frag.On) { try { Piece.MakeAhead(96, 3); } catch (Exception) { } try { Prepare(); } catch (Exception) { } }
+            Written();
             FixedTicks += System.Diagnostics.Stopwatch.GetTimestamp() - began;
             if (Time.unscaledTime < reportAt) return;
             reportAt = Time.unscaledTime + 0.5f;
@@ -902,9 +987,13 @@ namespace Fragmentation
             if (hull != null && share > 0f)
             {
                 float length = Mathf.Max(0.2f, LengthAlong(h, n));
+                long tc = Prof.Now;
                 if (share > 0.02f) { hull.CrushAt(c, n, share * length); h.sever = true; }
                 else hull.DentAt(c, n, Mathf.Clamp(share * 6f * length, 0.02f, 0.25f * length), Mathf.Clamp(0.35f * length, 0.3f, 1.5f));
+                Prof.Add(Prof.Crush, tc);
+                tc = Prof.Now;
                 if (!hull.shown) hull.Show();
+                Prof.Add(Prof.Show, tc);
             }
             Vector3 impulse = n * J;
             // The ground bites into what hits it: some of the speed along the ground goes too.
@@ -951,10 +1040,18 @@ namespace Fragmentation
                 if (HoldWrecks && GripStrikes && (h.paved || Solid(h))) b.W *= 1f - SpinLost / Mathf.Max(1, strikes);
             }
             // (and the ground: a crater where it hit soft ground hard, clods thrown out of it; and the dust and sparks of the blow)
+            long tf = Prof.Now;
             Ground.Feel struck = h.paved ? Ground.Soft : FeelFor(w, c, now);
+            Prof.Add(Prof.Feel, tf);
+            tf = Prof.Now;
             if (!h.paved && struck.Kind != Ground.Kind.Rock && into > 8f) Marks.Crater(c, n, energy, u, h);
+            Prof.Add(Prof.Crater, tf);
+            tf = Prof.Now;
             if (into > 9f && energy > 0.05f * cap) Thud(w, h, c, into, now);
+            Prof.Add(Prof.Thud, tf);
+            tf = Prof.Now;
             if (into > 3f && h.part != null) Sounds.Hit(c, into, h.part.mass, h.paved || struck.Hard, Solid(h));
+            Prof.Add(Prof.HitSound, tf);
             if (into > 6f) Note(Name(h) + " hit " + (h.paved ? "paving" : "the ground") + " at " + into.ToString("F0") + " m/s (" + u.magnitude.ToString("F0") + " m/s in all): " + what + ", hurt " + h.damage.ToString("F2"));
         }
 
@@ -1252,13 +1349,13 @@ namespace Fragmentation
                 {
                     // (in a busy step, the pieces of what was torn off are made in the next ones: the panels are gone from the part at once,
                     // their pieces come a step or two later, where the part has got to by then)
-                    if (System.Diagnostics.Stopwatch.GetTimestamp() - stepBegan > System.Diagnostics.Stopwatch.Frequency * 5 / 1000) { if (!spawnLater.Contains(h)) { spawnLater.Add(h); spawnLaterWreck.Add(w); } }
+                    if (Spent()) { if (!spawnLater.Contains(h)) { spawnLater.Add(h); spawnLaterWreck.Add(w); } }
                     else SpawnTorn(w, h, hull);
                 }
                 // (a part about to go altogether takes its small parts with it: they are not let go first)
                 // (and an engine, whose meshes come away whole, once it is worn or crushed right through)
                 if (hull.Left < 0.15f || (hull.plan.engine && h.damage >= 1f)) { h.sever = false; Break(w, h, true); return; }
-                if (h.sever) { h.sever = false; Sever(w, h, hull); if (h.part == null || h.gone) return; }
+                if (h.sever) { h.sever = false; if (!severing.Contains(h)) { severing.Add(h); severingWreck.Add(w); } }
             }
             else if (h.damage >= 1f) { Break(w, h, true); return; }
             if (h.damage >= 0.3f || (hull != null && hull.Left < 0.85f)) Weaken(h);
@@ -1287,14 +1384,32 @@ namespace Fragmentation
         void SpawnSome()
         {
             int done = 0;
-            while (spawnLater.Count > 0 && (done == 0 || System.Diagnostics.Stopwatch.GetTimestamp() - stepBegan < System.Diagnostics.Stopwatch.Frequency * 6 / 1000))
+            while (spawnLater.Count > 0 && (!didSpawn || !Spent()))
             {
                 Hits h = spawnLater[0];
                 Wreck w = spawnLaterWreck[0];
                 spawnLater.RemoveAt(0); spawnLaterWreck.RemoveAt(0);
                 if (h == null || h.gone || h.part == null || h.hull == null || h.hull.removed.Count == 0) continue;
                 try { SpawnTorn(w, h, h.hull); } catch (Exception ex) { Note("could not make " + Name(h) + "'s pieces: " + ex.Message); }
-                done++;
+                didSpawn = true;
+            }
+        }
+
+        readonly List<Hits> severing = new List<Hits>();
+        readonly List<Wreck> severingWreck = new List<Wreck>();
+
+        /// <summary>The parts whose skin was torn through where they are joined, let go: as many as the frame's budget leaves time for (at least one a frame).</summary>
+        void SeverSome()
+        {
+            while (severing.Count > 0 && (!(didBreak || didSever) || !Spent()))
+            {
+                Hits h = severing[0];
+                Wreck w = severingWreck[0];
+                severing.RemoveAt(0); severingWreck.RemoveAt(0);
+                // (gone meanwhile, or going: a part going takes its small parts with it, and is not let go first)
+                if (h == null || h.gone || h.doomed || h.part == null || h.part.State == PartStates.DEAD || h.hull == null) continue;
+                Sever(w, h, h.hull);
+                didSever = true;
             }
         }
 
@@ -1323,7 +1438,9 @@ namespace Fragmentation
                     TornAway++;
                     Note(Name(h) + " is torn away from " + (p.parent.partInfo != null ? p.parent.partInfo.title : "the part it hung from"));
                     Sounds.Tear(p.transform.position, 8f);
+                    long td = Prof.Now;
                     try { p.decouple(); } catch (Exception ex) { Note("could not part " + Name(h) + ": " + ex.Message); }
+                    Prof.Add(Prof.Dies, td);
                 }
             }
             for (int k = p.children.Count - 1; k >= 0; k--)
@@ -1334,7 +1451,9 @@ namespace Fragmentation
                 if (hull.HeldAt(at, reach) >= 0.25f) continue;
                 TornAway++;
                 Note((child.partInfo != null ? child.partInfo.title : "a part") + " is torn away from " + Name(h));
+                long td = Prof.Now;
                 try { child.decouple(); } catch (Exception ex) { Note("could not part them: " + ex.Message); }
+                Prof.Add(Prof.Dies, td);
             }
         }
 
@@ -1492,6 +1611,7 @@ namespace Fragmentation
 
         void Leaks(float dt, float now)
         {
+            int wentUp = 0;
             for (int n = leaks.Count - 1; n >= 0; n--)
             {
                 Leak leak = leaks[n];
@@ -1528,9 +1648,15 @@ namespace Fragmentation
                 }
                 if (now >= leak.until)
                 {
+                    // (one tank goes up a step at most: crushed together, a craft's tanks went up in the same step, each with its
+                    // explosion, its skin blown off and its pieces, and the step took 10 to 30 ms on the PC, 2026-10-24. One a step
+                    // they go up 20 ms apart, as close as their own times had them; the one held back leaks a step longer)
+                    // (and since one budget a frame for what can wait, one a frame where the frame's budget is spent: two steps in a
+                    // frame each sent a tank up)
+                    if (leak.lit && (wentUp > 0 || (didGoUp && Spent()))) continue;
                     leaks.RemoveAt(n);
                     // (alight, the rest goes up; not, it has simply run out, and the split tank is left as it is)
-                    if (leak.lit) GoUp(leak.wreck, h, leak);
+                    if (leak.lit) { GoUp(leak.wreck, h, leak); wentUp++; didGoUp = true; }
                     else Note(Name(h) + " has stopped leaking: nothing caught");
                 }
             }
@@ -1635,13 +1761,11 @@ namespace Fragmentation
 
         void RunLater()
         {
-            long until = System.Diagnostics.Stopwatch.GetTimestamp() + System.Diagnostics.Stopwatch.Frequency * 2 / 1000;
-            int done = 0;
-            while (later.Count > 0 && (done == 0 || System.Diagnostics.Stopwatch.GetTimestamp() < until))
+            while (later.Count > 0 && (!didLater || !Spent()))
             {
                 Action a = later.Dequeue();
                 try { a(); } catch (Exception ex) { Note("could not finish: " + ex.Message); }
-                done++;
+                didLater = true;
             }
         }
 
@@ -1659,14 +1783,12 @@ namespace Fragmentation
         void BreakSome()
         {
             long began = System.Diagnostics.Stopwatch.GetTimestamp();
-            long until = began + System.Diagnostics.Stopwatch.Frequency * 4 / 1000;
-            int done = 0;
-            while (doomed.Count > 0 && (done == 0 || System.Diagnostics.Stopwatch.GetTimestamp() < until))
+            while (doomed.Count > 0 && (!(didBreak || didSever) || !Spent()))
             {
                 Doomed d = doomed.Dequeue();
                 try { BreakNow(d.w, d.h, d.blown, d.other); }
                 catch (Exception ex) { Note("could not break a part up: " + ex.Message); }
-                done++;
+                didBreak = true;
             }
             BreakTicks += System.Diagnostics.Stopwatch.GetTimestamp() - began;
         }
@@ -1744,7 +1866,9 @@ namespace Fragmentation
             }
             // (once it is in pieces, it is not drawn whole as well; and the explosions mod, which makes pieces of its own from what a
             // destroyed part draws, makes none of this one)
+            long th = Prof.Now;
             Hide(p);
+            Prof.Add(Prof.Hide, th);
             Note(Name(h) + " broke up into " + made + " pieces" + (burns ? " and went up (" + fuel.ToString("F0") + " kg)" : "") + " after " + h.why);
             Vector3 at = p.transform.position;
             if (burns)
@@ -1761,13 +1885,17 @@ namespace Fragmentation
                     w.fireBig = Mathf.Max(w.fireBig, R);
                     if (w.firePart == null || w.firePart == p) { w.firePart = p.parent; w.fireLocal = Vector3.zero; w.fireBegan = now; }
                 }
+                long td = Prof.Now;
                 p.explode();
+                Prof.Add(Prof.Dies, td);
             }
             else
             {
                 // A part with nothing in it that burns is crushed, not blown up: dust and sparks, and no fireball (the weakest of the game's blasts).
+                long td = Prof.Now;
                 if (blown) FXMonger.Explode(p, at, 0.0);
                 p.Die();
+                Prof.Add(Prof.Dies, td);
             }
         }
 
@@ -1804,6 +1932,19 @@ namespace Fragmentation
         static string Name(Hits h) => h.part != null && h.part.partInfo != null ? h.part.partInfo.title : "a part";
 
         static readonly List<string> notes = new List<string>();
+        static readonly System.Text.StringBuilder unwritten = new System.Text.StringBuilder();
+
+        /// <summary>
+        /// What has been noted since, written to the game's log in one: each line written alone cost the game's thread 25 to 40 us
+        /// (Unity takes the stack each time), and one step of a crash notes up to sixty (seen on the PC, 2026-10-24). At the end of
+        /// every physics step and every frame, so that what was noted before the game itself fails is still written.
+        /// </summary>
+        static void Written()
+        {
+            if (unwritten.Length == 0) return;
+            Frag.Log(unwritten.ToString());
+            unwritten.Length = 0;
+        }
 
         /// <summary>A line for the log (and, in the development build, for the list of what happened lately).</summary>
         public static void Note(string text)
@@ -1811,7 +1952,9 @@ namespace Fragmentation
             string line = Time.time.ToString("F2") + " " + text;
             notes.Add(line);
             if (notes.Count > 120) notes.RemoveRange(0, notes.Count - 120);
-            Frag.Log(text);
+            // (written to the log a step's worth at a time: see Written)
+            if (unwritten.Length > 0) unwritten.Append("\n[Fragmentation] ");
+            unwritten.Append(text);
 #if DEV
             Clock.NotesThisFrame++;
 #endif

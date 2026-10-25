@@ -83,7 +83,7 @@ namespace Fragmentation
             if (!on) return;
             long t = Now;
             if (phase == 2) now.physicsMs += (float)((t - fixedEnded) * Ms);
-            else if (phase == 4) now.drawMs += (float)((t - lateEnded) * Ms);
+            else if (phase == 4 && count > 0) rows[count - 1].drawMs += (float)((t - lateEnded) * Ms);
             fixedBegan = t;
             phase = 1;
         }
@@ -102,7 +102,7 @@ namespace Fragmentation
             if (!on) return;
             long t = Now;
             if (phase == 2) now.physicsMs += (float)((t - fixedEnded) * Ms);
-            else if (phase == 4) now.drawMs += (float)((t - lateEnded) * Ms);
+            else if (phase == 4 && count > 0) rows[count - 1].drawMs += (float)((t - lateEnded) * Ms);
             updateBegan = t;
             phase = 3;
         }
@@ -116,7 +116,10 @@ namespace Fragmentation
             phase = 4;
             now.frame = Time.frameCount;
             now.at = Time.unscaledTime - began;
-            now.dt = Time.unscaledDeltaTime * 1000f;
+            // (the game's time for a frame is had at the start of the next one, and the drawing after the last LateUpdate is timed
+            // then too: both go to the row of the frame they belong to, the one before. Until 2026-10-24 each row had the time of the
+            // frame before it beside its own parts, so that its worst frames were listed with the next frame's parts)
+            if (count > 0) rows[count - 1].dt = Time.unscaledDeltaTime * 1000f;
             int gc = GC.CollectionCount(0);
             now.gc = gc - gcBefore; gcBefore = gc;
             now.mineMs = (float)((Crashes.FixedTicks - mineBefore) * Ms); mineBefore = Crashes.FixedTicks;
@@ -148,7 +151,7 @@ namespace Fragmentation
         public static string Read(bool all)
         {
             var say = new StringBuilder();
-            say.Append(count).Append(" frames timed").Append(on ? " (still timing)" : "").Append(". Columns: ms a frame; steps; the steps' scripts; physics; the frame's scripts; drawing (the frame before); this mod (of which breaking up); telling the explosions mod; the explosions mod; collections; notes; pieces; craft; patches of air; particles\n");
+            say.Append(count).Append(" frames timed").Append(on ? " (still timing)" : "").Append(". Columns: ms a frame; steps; the steps' scripts; physics; the frame's scripts; drawing (with the wait for the screen); this mod (of which breaking up); telling the explosions mod; the explosions mod; collections; notes; pieces; craft; patches of air; particles\n");
             int second = -1;
             float sum = 0f, worst = 0f; int n = 0;
             var partSum = new float[partsBefore.Length];

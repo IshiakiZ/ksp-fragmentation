@@ -8,10 +8,12 @@ namespace Fragmentation
     internal static class Prof
     {
         public const int Watch = 0, Blows = 1, Slide = 2, Decide = 3, Leaks = 4, Break = 5, Pieces = 6, Skin = 7, Bits = 8, Marks = 9, Spawn = 10, FirstSkin = 11,
-                         PieceMesh = 12, PieceMake = 13, Events = 14, Explode = 15, BlowOff = 16, Frames = 17, Sever = 18, Shape = 19, Measure = 20, Mass = 21;
+                         PieceMesh = 12, PieceMake = 13, Events = 14, Explode = 15, BlowOff = 16, Frames = 17, Sever = 18, Shape = 19, Measure = 20, Mass = 21,
+                         Crush = 22, Crater = 23, HitSound = 24, Dies = 25, Hide = 26, Show = 27, Feel = 28, Thud = 29, Prepared = 30;
         public static readonly string[] Names = { "watch", "blows", "slide", "decide", "leaks", "break", "pieces", "skin", "bits", "marks", "spawn", "first skins",
-                                                  "piece meshes", "piece making", "crash events", "explosions", "blowing off", "frames", "severing", "colliders", "measuring", "mass" };
-        public static readonly long[] Ticks = new long[22];
+                                                  "piece meshes", "piece making", "crash events", "explosions", "blowing off", "frames", "severing", "colliders", "measuring", "mass",
+                                                  "crushing", "craters", "hit sounds", "the game's parting", "hiding", "skins shown", "ground feel", "thuds", "skins drawn ahead" };
+        public static readonly long[] Ticks = new long[31];
 
         public static long Now => System.Diagnostics.Stopwatch.GetTimestamp();
 

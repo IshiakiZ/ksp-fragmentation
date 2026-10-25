@@ -22,6 +22,12 @@ namespace Fragmentation
     ///
     /// Each comes from where it happens, and from far off a little late, as sound does (343 metres a second). The sounds are made at the
     /// first crash watched, on another thread, in a second or so.
+    ///
+    /// Since 0.4.0, where the mod has its recordings (Keystone 0.10.0's Sounds: Sonniss's libraries, docs/sounds-plan.md), recordings of
+    /// real crashes are heard in their place, each kind as soon as one of it is loaded: cars dropped on concrete and on steel plates and
+    /// metal crashing for a blow on paving (with metal debris falling about), rock and earth thrown for one on soil, heavy steel struck
+    /// for a clang, metal scraped and squealing for a tear, and a scrape, a grind and a rockslide for the three slides. A part striking
+    /// the water keeps its made splash. The made sounds meanwhile, and wherever there are none.
     /// </summary>
     public static class Sounds
     {
@@ -77,6 +83,7 @@ namespace Fragmentation
         public static void Frame()
         {
             if (crunch == null && made != null) Clips(made);
+            if (crunch != null && !recordedAsked) AskRecorded();
             if (loops.Count == 0) return;
             float now = Time.time, dt = Time.deltaTime;
             quiet.Clear();
@@ -220,6 +227,43 @@ namespace Fragmentation
             s.spread = 60f;
             s.volume = 0f;
             return s;
+        }
+
+        // ---- the recordings (since 0.4.0): each kind's clips taken over by its recordings as they load
+        static bool recordedAsked;
+        static readonly Dictionary<string, List<AudioClip>> recordedKinds = new Dictionary<string, List<AudioClip>>();
+
+        static void AskRecorded()
+        {
+            recordedAsked = true;
+            try { AskRecordings(); }
+            catch (Exception) { }      // (a Keystone older than 0.10.0: no Sounds there, the made sounds stay)
+        }
+
+        static void AskRecordings()
+        {
+            foreach (string name in Keystone.Sounds.Names("Fragmentation"))
+            {
+                string kind = name.StartsWith("crunch") || name.StartsWith("debris") ? "crunch" : name.StartsWith("thud") ? "thud" : name.StartsWith("tear") ? "tear"
+                            : name.StartsWith("clang") ? "clang" : name == "slide-paved" || name == "slide-steel" || name == "slide-soil" ? name : null;
+                if (kind == null) continue;
+                Keystone.Sounds.Get("Fragmentation", name, clip =>
+                {
+                    if (clip == null) return;
+                    if (!recordedKinds.TryGetValue(kind, out List<AudioClip> have)) recordedKinds[kind] = have = new List<AudioClip>();
+                    have.Add(clip);
+                    switch (kind)
+                    {
+                        case "crunch": crunch = have.ToArray(); break;
+                        case "thud": thud = have.ToArray(); break;
+                        case "tear": tear = have.ToArray(); break;
+                        case "clang": clang = have.ToArray(); break;
+                        case "slide-paved": pavedLoop = clip; break;
+                        case "slide-steel": steelLoop = clip; break;
+                        case "slide-soil": soilLoop = clip; break;
+                    }
+                });
+            }
         }
 
         static void Clips(Bank b)

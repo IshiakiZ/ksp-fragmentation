@@ -137,6 +137,30 @@ namespace Fragmentation
         {
             if (shown) return;
             shown = true;
+            // (drawn ahead while the craft was watched: only what has been struck since is drawn again; see Prepare)
+            if (prepared) { dirty = true; shapeDue = 0f; return; }
+            Make();
+        }
+
+        /// <summary>
+        /// (Since 2026-10-24) The first drawing made ahead, while the craft is watched and nothing has touched this part yet: the mesh
+        /// laid out and filled once, its renderer off and the part drawn by its own as ever, until the first blow (Show). A part's first
+        /// drawing is the most work its skin ever takes (every panel laid out, its corners, triangles, maps and materials: 3 to 12 ms of
+        /// a crash's frame on the PC); a drawing after it moves the corners of what was struck and hands them over. Made one part a
+        /// frame by Crashes.Prepare; let go again (Crashes.Disarm) if the craft is left untouched.
+        /// </summary>
+        public void Prepare()
+        {
+            if (shown || prepared || part == null) return;
+            Make();
+            Rebuild();
+            prepared = true;
+        }
+
+        public bool prepared;
+
+        void Make()
+        {
             drawnObject = new GameObject("Fragmentation hull") { layer = part.gameObject.layer };
             drawnObject.transform.SetParent(part.transform, false);
             drawnObject.AddComponent<MeshFilter>().sharedMesh = mesh = new Mesh { name = "Fragmentation hull" };
@@ -1082,13 +1106,28 @@ namespace Fragmentation
         /// with its inside and its torn edges, bent and crumpled by so much (0 to 1), and blackened by so much; and where it is, how it is
         /// turned, how big it is, and what it is drawn with.
         /// </summary>
+        // (what PieceOf builds a piece in, kept from one piece to the next: made afresh for each, the lists, the set, the map and a
+        // little array a triangle came to tens of kilobytes a piece, seventy pieces in two or three frames of a crash (2026-10-24,
+        // the PC). PieceOf runs on the game's thread alone.)
+        static readonly List<int> pieceTris = new List<int>();
+        static readonly HashSet<int> pieceCells = new HashSet<int>();
+        static readonly List<Vector3> pieceV = new List<Vector3>(), pieceN = new List<Vector3>();
+        static readonly List<Vector2> pieceU = new List<Vector2>();
+        static readonly List<Vector4> pieceT = new List<Vector4>();
+        static List<int>[] pieceSubs = new List<int>[0];
+        static int[] pieceAt = new int[0], pieceAtStamp = new int[0];
+        static int pieceStamp;
+
         public Mesh PieceOf(List<int> cells, float crumple, float soot, out Vector3 worldMiddle, out Quaternion turn, out Vector3 extent, out float area, out Material[] mats, out Color[] tints)
         {
             int slots = slotMats.Length;
-            var tris = new List<int>();
+            List<int> tris = pieceTris;
+            tris.Clear();
             area = 0f;
             Vector3 mid = Vector3.zero, facing = Vector3.zero;
-            var inSet = new HashSet<int>(cells);
+            HashSet<int> inSet = pieceCells;
+            inSet.Clear();
+            foreach (int ci in cells) inSet.Add(ci);
             foreach (int ci in cells)
             {
                 HullPlan.Cell c = plan.cells[ci];
@@ -1120,46 +1159,52 @@ namespace Fragmentation
             float wrinkle = crumple * Mathf.Clamp(Mathf.Sqrt(Mathf.Max(farthest, 1e-6f)) * 0.08f, 0.01f, 0.12f);
             int seed = Random.Range(0, 10000);
             float th = plan.thick;
-            var v = new List<Vector3>(tris.Count * 6);
-            var nn = new List<Vector3>(tris.Count * 6);
-            var u = new List<Vector2>(tris.Count * 6);
-            var tg = new List<Vector4>(tris.Count * 6);
-            var subs = new List<int>[slots + 1];
-            for (int s = 0; s <= slots; s++) subs[s] = new List<int>();
+            List<Vector3> v = pieceV, nn = pieceN;
+            List<Vector2> u = pieceU;
+            List<Vector4> tg = pieceT;
+            v.Clear(); nn.Clear(); u.Clear(); tg.Clear();
+            if (pieceSubs.Length < slots + 1) Array.Resize(ref pieceSubs, slots + 1);
+            for (int s = 0; s <= slots; s++) { if (pieceSubs[s] == null) pieceSubs[s] = new List<int>(); else pieceSubs[s].Clear(); }
+            List<int>[] subs = pieceSubs;
             Vector3 lo = Vector3.one * float.MaxValue, hi = Vector3.one * float.MinValue;
-            Func<Vector3, Vector3> bend = x =>
+            Vector3 Bend(Vector3 x)
             {
                 if (crumple <= 0f) return x;
                 Vector3 y = x;
                 if (Vector3.Dot(x, foldAcross) > foldAt) y = foldAcross * foldAt + fold * (x - foldAcross * foldAt);
                 y += Vector3.up * (wrinkle * HullPlan.Noise(x * 4.5f, seed));
                 return y;
-            };
-            var at = new Dictionary<int, int>();
+            }
+            // (where each of the skin's corners went in the piece, by the corner's number: stamped, so as not to be cleared each time)
+            if (pieceAt.Length < pos.Length) { pieceAt = new int[pos.Length]; pieceAtStamp = new int[pos.Length]; pieceStamp = 0; }
+            if (pieceStamp == int.MaxValue) { Array.Clear(pieceAtStamp, 0, pieceAtStamp.Length); pieceStamp = 0; }
+            int stamp = ++pieceStamp;
             foreach (int k in tris)
             {
                 int i = k * 3, start = v.Count;
-                Vector3 a = bend(back * (pos[i] - mid)), b = bend(back * (pos[i + 1] - mid)), c = bend(back * (pos[i + 2] - mid));
+                Vector3 a = Bend(back * (pos[i] - mid)), b = Bend(back * (pos[i + 1] - mid)), c = Bend(back * (pos[i + 2] - mid));
                 Vector3 face = Vector3.Cross(b - a, c - a);
                 face = face.sqrMagnitude > 1e-14f ? face.normalized : back * nrm[i];
-                Vector3[] corners = { a, b, c };
                 for (int q = 0; q < 3; q++)
                 {
+                    Vector3 corner = q == 0 ? a : q == 1 ? b : c;
                     Vector3 n0 = back * nrm[i + q];
                     Vector3 n1 = crumple > 0f ? Blend(n0, face, crumple * 0.06f + 0.01f) : n0;
-                    v.Add(corners[q]); nn.Add(n1); u.Add(plan.uv[i + q]); tg.Add(plan.t[i + q]);
-                    lo = Vector3.Min(lo, corners[q]); hi = Vector3.Max(hi, corners[q]);
+                    v.Add(corner); nn.Add(n1); u.Add(plan.uv[i + q]); tg.Add(plan.t[i + q]);
+                    lo = Vector3.Min(lo, corner); hi = Vector3.Max(hi, corner);
                 }
                 for (int q = 0; q < 3; q++)
                 {
-                    v.Add(corners[q] - nn[start + q] * th); nn.Add(-nn[start + q]);
+                    Vector3 corner = q == 0 ? a : q == 1 ? b : c;
+                    v.Add(corner - nn[start + q] * th); nn.Add(-nn[start + q]);
                     Vector3 pp = plan.p[i + q];
                     u.Add(new Vector2((pp.x + pp.z) * 0.9f, Mathf.Repeat(pp.y * 0.63f, 0.7f))); tg.Add(new Vector4(1f, 0f, 0f, -1f));
                 }
                 List<int> outer = subs[plan.slot[k]];
                 outer.Add(start); outer.Add(start + 1); outer.Add(start + 2);
                 subs[slots].Add(start + 3); subs[slots].Add(start + 5); subs[slots].Add(start + 4);
-                at[i] = start; at[i + 1] = start + 1; at[i + 2] = start + 2;
+                pieceAt[i] = start; pieceAt[i + 1] = start + 1; pieceAt[i + 2] = start + 2;
+                pieceAtStamp[i] = stamp; pieceAtStamp[i + 1] = stamp; pieceAtStamp[i + 2] = stamp;
             }
             // ---- its torn edges, all round
             foreach (int ci in cells)
@@ -1169,7 +1214,9 @@ namespace Fragmentation
                 {
                     int o = c.edgeOther[e];
                     if (o >= 0 && inSet.Contains(o)) continue;
-                    if (!at.TryGetValue(c.edgeA[e], out int ia) || !at.TryGetValue(c.edgeB[e], out int ib)) continue;
+                    int ea = c.edgeA[e], eb = c.edgeB[e];
+                    if (pieceAtStamp[ea] != stamp || pieceAtStamp[eb] != stamp) continue;
+                    int ia = pieceAt[ea], ib = pieceAt[eb];
                     int s0 = v.Count;
                     v.Add(v[ia]); v.Add(v[ib]); v.Add(v[ib + 3]); v.Add(v[ia + 3]);
                     Vector3 side = Vector3.Cross(v[ib] - v[ia], nn[ia] + nn[ib]);
@@ -1188,7 +1235,7 @@ namespace Fragmentation
             if (v.Count > 65000) m.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
             m.SetVertices(v); m.SetNormals(nn); m.SetUVs(0, u); m.SetTangents(tg);
             int used = 0;
-            foreach (List<int> l in subs) if (l.Count > 0) used++;
+            for (int s = 0; s <= slots; s++) if (subs[s].Count > 0) used++;
             m.subMeshCount = Mathf.Max(1, used);
             mats = new Material[Mathf.Max(1, used)];
             tints = new Color[mats.Length];
