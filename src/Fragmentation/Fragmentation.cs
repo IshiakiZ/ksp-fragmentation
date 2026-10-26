@@ -4,7 +4,7 @@ using UnityEngine;
 
 #if !DEV
 [assembly: KSPAssembly("Fragmentation", 0, 2)]
-[assembly: KSPAssemblyDependency("Keystone", 0, 5)]
+[assembly: KSPAssemblyDependency("Keystone", 0, 9)]
 #endif
 
 namespace Fragmentation
@@ -32,10 +32,10 @@ namespace Fragmentation
     /// </summary>
     public static class Frag
     {
-        public const string Version = "0.4.0";
+        public const string Version = "0.5.0";
 
         public static Mod Page;
-        public static Toggle On, Fires, Heard, Spills, FarWrecks;
+        public static Toggle On, Fires, Heard, Spills, FarWrecks, Cabins;
         public static Slider Slide, Tough, Most, Lasts;
 
         public static void Setup()
@@ -50,6 +50,7 @@ namespace Fragmentation
             Fires = Page.Toggle("fires", "Leaks, fires and dust", true, "Split tanks leak before they go up, pieces burn and the slide raises dust (in the air of the Volumetric Explosions mod, where it is installed).");
             Spills = Page.Toggle("stains", "Fuel on the ground", true, "(0.3.0) Fuel run out of a split tank lies on the ground under it as a dark stain, spreading as more comes (on paving wider, on soil soaking in), and burns there as a pool if it is alight.");
             FarWrecks = Page.Toggle("farwrecks", "Wrecks moving further off", true, "(0.4.0) The game stops a craft on the ground dead, on rails, once it is 350 m from the craft you fly: a wreck still sliding there, or its pieces still tumbling, froze. While a crash is going on its wrecks are kept moving as far off as a craft in the air is (2.25 km), and given back to the game's ranges when they are left as they lie (and while you fly faster than 250 m/s).");
+            Cabins = Page.Toggle("cabins", "Cabins break up too", true, "(0.5.0) A cockpit or pod is as strong as a capsule of its weight (the game gives an aeroplane's cockpit three times a capsule's crash tolerance, so that a hard landing does not lose its crew). Crushed in, torn open or burst by its own propellant, it goes to pieces and its crew with it, as the game kills a crew. Off: as before, a cabin holds and its crew live for as long as any of it is left.");
             Heard = Page.Toggle("sounds", "Sounds", true, "The crash heard: a wreck grinding along paving or ploughing through earth, the crunch of each blow, metal tearing as it comes away. Made by the mod as it goes, from where it happens.");
         }
 

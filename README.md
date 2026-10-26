@@ -24,6 +24,8 @@ is not needed, but the leaks, the fires and the smoke of every piece are drawn o
   sand, slides on ice as on glass, scrapes and sparks on bare rock, and raises white powder, pale sand or grey dust as it goes.
 * **Tanks split before they go up,** leaking and alight; what runs out stains the ground under them, and burns there
   as a pool where it is alight (0.3.0).
+* **Cockpits and pods too** (0.5.0): as strong as a capsule of their weight, not as the game's crash tolerance for them has
+  it; crushed in, torn open or burst by their own fuel, they break up, and their crew with them, as the game kills a crew.
 * **The pieces are the parts' own:** torn panels, rings out of torn tanks, engines' bells.
 * **In orbit too:** a craft that clips another tears at what it hits.
 * **On the sea** (0.3.0): a part striking the water takes a blow from the water it throws up, broadside nearly as on soil,
@@ -42,7 +44,7 @@ Copy the `Fragmentation` folder from the download into your KSP's `GameData`, be
 ## Settings
 
 In the Keystone window (the keystone button on the game's toolbar, or Alt-K; Option-K on a Mac): how far a wreck
-slides, how tough parts are, how many pieces there may be and how long they stay.
+slides, how tough parts are, how many pieces there may be and how long they stay, and whether cabins break up too.
 
 ## Good to know
 
@@ -55,7 +57,7 @@ slides, how tough parts are, how many pieces there may be and how long they stay
 ## Works on
 
 Mac: tried. Windows 11 (Direct3D 11): 0.2.2 tried; 0.4.0's crashes made cheaper there (measured and filmed) and its wrecks moving further
-off tried (2026-10-24 and 25). Linux: never run.
+off tried (2026-10-24 and 25); 0.5.0's cabins not yet. Linux: never run.
 
 **More:** [the long description](https://github.com/IshiakiZ/ksp-fragmentation/wiki/The-long-description) (everything in full, and what
 was tried on each system) and the rest of the [wiki](https://github.com/IshiakiZ/ksp-fragmentation/wiki).

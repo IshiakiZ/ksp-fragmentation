@@ -93,7 +93,7 @@ namespace Fragmentation
         float slowFrames = 0.02f;                      // how long the frames have lately been taking, seconds (see Spawn)
         public static string Report = "", Why = "";
         public static bool TestOff;                    // (development build: the mod stood aside, to compare with the game's own crashes, without touching the player's settings)
-        public static int Broken, TornAway, Split, Made, Burst;
+        public static int Broken, TornAway, Split, Made, Burst, CrewKilled;
 
         // ---- the figures the crashes are worked out by (see the wiki's Research page). Fields, so that the development build can try others.
         public static float Restitution = 0.12f;      // how much of its speed into the ground a craft keeps, bouncing off
@@ -119,6 +119,43 @@ namespace Fragmentation
         public static float SpinLost = 0.3f;           // and a wreck loses this share of its turning at each blow (shared among the parts that strike together)
         public static float Vault = 0.1f;              // a blow throws a craft up off the ground by no more than this share of the blow's speed (what struck gives way)
         public static int TestGround = -1;             // (development build: every ground that is not paving taken as this kind, Ground.Kind; -1 as the biome has it)
+        // ---- (since 0.5.0) cabins: the parts the crew sit in (see Structure, CabinBroken)
+        public static float CabinTolerance = 14f;     // a cabin's structure is reckoned at no more than a capsule's crash tolerance (the Mk1 pod's)
+        public static float CabinCrush = 0.25f;       // a crewed cabin crushed in by this share of its length is broken open
+        public static float CabinLeft = 0.6f;         // and one with less than this share of its shell left (torn off, ground away, blown off)
+
+        /// <summary>
+        /// (Since 0.5.0.) The crash tolerance a part's structure is reckoned by: the game's own, but for a cabin (a part with seats in it) no more
+        /// than a capsule's. The game gives an aeroplane's cockpit 40 to 50 m/s (the Mk1-3 pod 20) so that a hard landing does not lose the crew;
+        /// what a part takes before it is crushed through goes as the square of it (see Capacity), so a cockpit was 8 to 13 times harder to crush
+        /// than a pod of its weight (the Mk1 Cockpit 35,000 kJ, an FL-T400 tank 160): it came out of every crash whole, its crew alive, the rest of
+        /// the craft in pieces round it. A capsule built to come down on land at the end of a parachute takes 14 m/s (the Mk1 pod's own).
+        /// </summary>
+        public static float Structure(Part p, float tolerance)
+        {
+            if (p == null || p.CrewCapacity <= 0 || Frag.Cabins == null || !Frag.Cabins) return tolerance;
+            return Mathf.Min(tolerance, CabinTolerance);
+        }
+
+        /// <summary>(Since 0.5.0.) Whether a part has crew in it (as the setting has cabins taken).</summary>
+        static bool Crewed(Part p) => p != null && p.protoModuleCrew != null && p.protoModuleCrew.Count > 0 && Frag.Cabins != null && Frag.Cabins;
+
+        /// <summary>
+        /// (Since 0.5.0.) Whether a crewed cabin is broken open: crushed in by a quarter of its length, or with less than three fifths of its shell
+        /// left. The game kills a crew only with their part (Part.Die: each of them dies, and a new one comes in their place where the game is set
+        /// so), so a cabin broken open goes to pieces, its crew with it. Until 0.5.0 a pod ground down to a quarter of its shell, its own fuel
+        /// gone up in it, lay on the runway with its kerbal sitting in it unhurt.
+        /// </summary>
+        static bool CabinBroken(Hits h, Hull hull) => hull != null ? h.crushed >= CabinCrush || hull.Left < CabinLeft : h.damage >= 0.5f;
+
+        /// <summary>(Since 0.5.0.) The crew of a part, by name, for the log.</summary>
+        static string Crew(Part p)
+        {
+            if (p == null || p.protoModuleCrew == null || p.protoModuleCrew.Count == 0) return "";
+            var names = new List<string>();
+            foreach (ProtoCrewMember c in p.protoModuleCrew) if (c != null) names.Add(c.name);
+            return string.Join(", ", names.ToArray());
+        }
 
         /// <summary>(Since 0.3.0.) What the ground is under a wreck: looked up twice a second from the world's biome there (Ground.KindAt).</summary>
         static Ground.Feel FeelFor(Wreck w, Vector3 at, float now)
@@ -300,7 +337,7 @@ namespace Fragmentation
             {
                 if (p == null) continue;
                 Hits h = p.GetComponent<Hits>();
-                float own = h != null && h.armed ? h.original : p.crashTolerance;
+                float own = Structure(p, h != null && h.armed ? h.original : p.crashTolerance);
                 t = Mathf.Min(t, own);
             }
             if (t == float.MaxValue) t = 8f;
@@ -674,7 +711,7 @@ namespace Fragmentation
             foreach (Piece p in Piece.All) if (p != null && !p.resting) moving++;
             Report = (wrecks.Count > 0 ? wrecks.Count + " craft that may crash " + (wrecks.Count == 1 ? "is" : "are") + " being watched. " : "") +
                      (Piece.Count > 0 ? Piece.Count + " pieces of wreckage (" + moving + " moving), " + Bits.Count + " bits. " : "") +
-                     (Broken + TornAway + Split + Burst > 0 ? "So far " + Broken + " parts broken up, " + TornAway + " torn away, " + Split + " tanks split, " + Burst + " gone up." : "No crash yet.");
+                     (Broken + TornAway + Split + Burst > 0 ? "So far " + Broken + " parts broken up, " + TornAway + " torn away, " + Split + " tanks split, " + Burst + " gone up" + (CrewKilled > 0 ? ", " + CrewKilled + " of their crews killed with them." : ".") : "No crash yet.");
         }
 
         static void Remember(Wreck w)
@@ -1101,7 +1138,7 @@ namespace Fragmentation
             // The softer of the two takes more of it; and a tank, a thin wall full of liquid, is pierced rather than crushed by a part driven
             // into it (a supply ship at a few metres a second holed Mir's Spektr module; a gear leg driven into a full tank leaked it: see the
             // Research page).
-            float theirs = h.other != null ? Mathf.Max(0.5f, h.other.GetComponent<Hits>() is Hits o && o.armed ? o.original : h.other.crashTolerance) : t;
+            float theirs = h.other != null ? Mathf.Max(0.5f, Structure(h.other, h.other.GetComponent<Hits>() is Hits o && o.armed ? o.original : h.other.crashTolerance)) : t;
             float share = theirs / (t + theirs);
             float energy = 0.5f * mu * (into * into - t * t) * (1f - Restitution * Restitution) * share;
             if (Propellant(h.part) > 20.0) energy *= 1.8f;
@@ -1355,9 +1392,11 @@ namespace Fragmentation
                 // (a part about to go altogether takes its small parts with it: they are not let go first)
                 // (and an engine, whose meshes come away whole, once it is worn or crushed right through)
                 if (hull.Left < 0.15f || (hull.plan.engine && h.damage >= 1f)) { h.sever = false; Break(w, h, true); return; }
+                // (since 0.5.0: a crewed cabin broken open goes to pieces, and its crew with it)
+                if (Crewed(p) && CabinBroken(h, hull)) { h.sever = false; h.why = (h.crushed >= CabinCrush ? "its cabin crushed in (" : "its cabin torn open (") + h.why + ")"; Break(w, h, true); return; }
                 if (h.sever) { h.sever = false; if (!severing.Contains(h)) { severing.Add(h); severingWreck.Add(w); } }
             }
-            else if (h.damage >= 1f) { Break(w, h, true); return; }
+            else if (h.damage >= 1f || (Crewed(p) && CabinBroken(h, null))) { Break(w, h, true); return; }
             if (h.damage >= 0.3f || (hull != null && hull.Left < 0.85f)) Weaken(h);
             if (h.leaking) return;
             // A tank whose wall is breached leaks: crushed in, or holed.
@@ -1750,7 +1789,9 @@ namespace Fragmentation
             });
             h.sever = true;
             Note(Name(h) + " went up (" + fuel.ToString("F0") + " kg), " + (hull.Left * 100f).ToString("F0") + "% of its skin left");
-            if (hull.Left < 0.15f) Break(w, h, false);
+            // (since 0.5.0: a crewed cabin whose own propellant has gone up in it goes to pieces, and its crew with it)
+            if (Crewed(p)) { h.why = "its own propellant going up in it"; h.burst = true; Break(w, h, false); }
+            else if (hull.Left < 0.15f) Break(w, h, false);
             else Later(() => { if (!h.gone && !h.doomed && h.part != null && h.part.State != PartStates.DEAD) { h.sever = false; Sever(w, h, hull); } });
         }
 
@@ -1834,7 +1875,9 @@ namespace Fragmentation
                     // its last pieces are left on the ground, not sent on at the speed it was going)
                     bool dragged = !burns && Solid(h) && h.slidOn > 2f && Time.fixedTime - h.lastTouch < 0.3f;
                     hull.TearAll(dragged ? Torn.Ground : Torn.Broken);
-                    spawnHeat = burns ? 0.8f : 0f; spawnBurning = burns ? (solid ? 0.85f : 0.4f) : 0f; spawnFrom = p.transform.position; spawnViolence = violence;
+                    // (a cabin whose own propellant has just gone up in it goes as hot as one that burns: the burst was its, a moment ago, in GoUp)
+                    bool hot = burns || h.burst;
+                    spawnHeat = hot ? 0.8f : 0f; spawnBurning = hot ? (solid ? 0.85f : 0.4f) : 0f; spawnFrom = p.transform.position; spawnViolence = h.burst ? Mathf.Max(violence, 1.5f) : violence;
                     made = Spawn(w, h, hull, true);
                     spawnHeat = 0f; spawnBurning = 0f; spawnViolence = 0f;
                     Rigidbody prb = BodyOf(p);
@@ -1843,7 +1886,7 @@ namespace Fragmentation
                     Vector3 where = p.transform.position, going = prb != null ? prb.velocity : Vector3.zero;
                     if (dragged) going *= 0.4f;
                     Quaternion turn = p.transform.rotation;
-                    float kick = 3f + 3f * violence + (burns ? 6f : 0f), soot = burns ? 0.5f : 0f;
+                    float kick = 3f + 3f * violence + (hot ? 6f : 0f), soot = hot ? 0.5f : 0f;
                     int rings = Random.Range(0, 2), bars = Random.Range(1, 3);
                     Later(() => { long t2 = Prof.Now; Frames.Throw(plan, where, turn, going, kick, rings, bars, soot, null); Prof.Add(Prof.Frames, t2); });
                 }
@@ -1869,7 +1912,10 @@ namespace Fragmentation
             long th = Prof.Now;
             Hide(p);
             Prof.Add(Prof.Hide, th);
-            Note(Name(h) + " broke up into " + made + " pieces" + (burns ? " and went up (" + fuel.ToString("F0") + " kg)" : "") + " after " + h.why);
+            // (its crew are killed with it, by the game itself, as it goes: see Part.Die)
+            string crew = Crewed(p) ? Crew(p) : "";
+            if (crew.Length > 0) CrewKilled += p.protoModuleCrew.Count;
+            Note(Name(h) + " broke up into " + made + " pieces" + (burns ? " and went up (" + fuel.ToString("F0") + " kg)" : "") + " after " + h.why + (crew.Length > 0 ? "; killed with it: " + crew : ""));
             Vector3 at = p.transform.position;
             if (burns)
             {

@@ -18,6 +18,7 @@ namespace Fragmentation
         public float damage;                // 0 whole; 1 broken up
         public float hardest;               // the hardest blow it has taken, m/s into whatever it hit
         public bool leaking, gone, tearing, doomed;
+        public bool burst;                  // (since 0.5.0) what burns in it has gone up in it (see Crashes.GoUp): a cabin then goes to pieces as hot as a tank does
         public bool inWater;                // (since 0.3.0) under the water's surface, as last looked: a blow is reckoned as it goes in, see Crashes.Water
         public int shed;                    // pieces it has lost while scraping along
         public float stiffness = 1f;        // what is left of the stiffness of what holds it to its parent (see Crashes.Weaken)
@@ -71,8 +72,8 @@ namespace Fragmentation
 
         public const float Raised = 1e6f;
 
-        /// <summary>The part's own tolerance whether or not it is raised just now.</summary>
-        public float Tolerance => armed || original >= 0f ? Mathf.Max(0.5f, original) : (part != null ? Mathf.Max(0.5f, part.crashTolerance) : 6f);
+        /// <summary>The part's own tolerance whether or not it is raised just now (a cabin's no more than a capsule's: see Crashes.Structure).</summary>
+        public float Tolerance => Crashes.Structure(part, armed || original >= 0f ? Mathf.Max(0.5f, original) : (part != null ? Mathf.Max(0.5f, part.crashTolerance) : 6f));
 
         public void Clear()
         {

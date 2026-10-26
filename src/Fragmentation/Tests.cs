@@ -756,6 +756,38 @@ namespace Fragmentation
             return p.partInfo.title + " is loose, a craft of " + p.vessel.parts.Count + " parts and " + p.vessel.totalMass.ToString("F2") + " t, and is the one flown";
         }
 
+        /// <summary>
+        /// (Since 0.5.0.) What a part of the craft being flown is drawn with: "part=Mk1_Command" (the first whose title has those letters; "all":
+        /// every part with seats). Each mesh, whether its skin is torn by this mod (HullPlan.Drawn) and each material's shader and queue: what is
+        /// not torn (glass) stays drawn as it is while the part is.
+        /// </summary>
+        public static string Looks(string words)
+        {
+            Vessel v = FlightGlobals.ActiveVessel;
+            if (v == null) return "nothing is being flown";
+            string want = Word(words ?? "", "part");
+            bool all = (words ?? "").Contains("all");
+            var say = new StringBuilder();
+            foreach (Part p in v.parts)
+            {
+                if (p == null || p.partInfo == null) continue;
+                if (all ? p.CrewCapacity <= 0 : (want.Length > 0 && p.partInfo.title.IndexOf(want, StringComparison.OrdinalIgnoreCase) < 0)) continue;
+                List<MeshFilter> torn = HullPlan.Drawn(p);
+                say.Append(p.partInfo.title).Append(" (").Append(p.partInfo.name).Append(", crew ").Append(p.protoModuleCrew.Count).Append('/').Append(p.CrewCapacity).Append(", tolerance ").Append(p.crashTolerance.ToString("F0")).Append("):\n");
+                foreach (MeshRenderer r in p.FindModelComponents<MeshRenderer>())
+                {
+                    if (r == null) continue;
+                    MeshFilter f = r.GetComponent<MeshFilter>();
+                    say.Append("  ").Append(r.name).Append(r.enabled && r.gameObject.activeInHierarchy ? "" : " (off)").Append(f != null && torn.Contains(f) ? " torn" : " not torn").Append(": ");
+                    foreach (Material m in r.sharedMaterials)
+                        say.Append(m == null ? "none" : m.name + " [" + (m.shader != null ? m.shader.name : "?") + ", queue " + m.renderQueue + (HullPlan.Solid(m) ? "" : ", see-through") + "]").Append("; ");
+                    say.Append('\n');
+                }
+                if (!all && want.Length > 0) break;
+            }
+            return say.Length > 0 ? say.ToString() : "no part like '" + want + "'";
+        }
+
         /// <summary>Where everything is: each craft near, what it is, how far it lies from where the first of them touched after the last throw, and how fast it is going.</summary>
         public static string Where()
         {

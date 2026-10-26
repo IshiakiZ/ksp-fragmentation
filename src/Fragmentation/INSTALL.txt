@@ -10,7 +10,9 @@ rings and stringers, engines, shreds, rivets, clods and slabs of turf, every pie
 little smoke. Parts from other mods are torn as the game's own are.
 From 0.3.0: crashes heard, the ground as the world has it (snow, sand, ice, rock, dust),
 fuel that stains the ground and burns as a pool, strikes on the sea, and wrecks kept in
-the save.
+the save. From 0.5.0: cockpits and pods break up too, as strong as a capsule of their
+weight; one crushed in, torn open or burst by its own fuel goes to pieces, and its crew
+with it, as the game kills a crew.
 
 INSTALL
   This mod needs Keystone 0.9 or later, the base it stands on, which is a separate download:
@@ -24,7 +26,8 @@ INSTALL
 
 USE
   Nothing to do: crash something. The settings (how far a wreck slides, how tough parts are,
-  how many pieces there may be and for how long, leaks and fires, and switching it off) are
+  how many pieces there may be and for how long, leaks and fires, whether cabins break up
+  too, and switching it off) are
   in the Keystone window: the keystone button on the game's toolbar, or Option-K on a Mac
   and Alt-K elsewhere. Then turn to Fragmentation.
 
@@ -38,8 +41,8 @@ water it throws up (broadside nearly as on soil, nose first far less). A torn pa
 
 WHERE IT WORKS
   Made and tried on a Mac, and tried on Windows 11 (0.2.2, with Volumetric Explosions 0.6.3:
-  rockets let fall by the pad and thrown at a wall); what 0.3.0 adds has been run on the
-  Mac only so far. It has no shader of its own. The fire and smoke are Volumetric
+  rockets let fall by the pad and thrown at a wall; 0.4.0's cheaper crashes and wrecks moving
+  further off); what 0.5.0 adds (cabins) has been run on the Mac only so far. It has no shader of its own. The fire and smoke are Volumetric
   Explosions', drawn by that mod's shaders (for OpenGL on a Mac or Linux, built for
   Direct3D on Windows). Nobody has run it on Linux yet.
 
