@@ -45,6 +45,8 @@ Copy the `Fragmentation` folder from the download into your KSP's `GameData`, be
 
 In the Keystone window (the keystone button on the game's toolbar, or Alt-K; Option-K on a Mac): how far a wreck
 slides, how tough parts are, how many pieces there may be and how long they stay, and whether cabins break up too.
+With Keystone 0.11.0, four finer details in its Advanced view: how many small bits of wreckage, how much earth and how
+many sparks a crash throws, and how loud it is. [All of them](https://github.com/IshiakiZ/ksp-fragmentation/wiki/The-long-description#settings).
 
 ## Good to know
 

@@ -26,6 +26,8 @@ namespace Fragmentation
         static readonly HashSet<Collider> colliders = new HashSet<Collider>();
         static readonly Stack<Piece> pool = new Stack<Piece>();
         static int ids;
+        /// <summary>The number of the last piece made: every one made after is numbered higher (see Blast).</summary>
+        public static int LastId => ids;
         static PhysicMaterial surface;
 
         public static IList<Piece> All => all;
@@ -45,10 +47,16 @@ namespace Fragmentation
         public float smoke, smokeUntil, shade, warm;
         public physicalObject po;
         public float born, life, heat, burns, area, mass, reach;
+        /// <summary>How many times as dense as water what it is made of is (0: taken from its mass over its area, as before 2026-11-03, see Step).</summary>
+        public float density;
+        /// <summary>Aluminium sheet, and steel: how many times as dense as water.</summary>
+        public const float Aluminium = 2.7f, Steel = 7.8f;
         public bool resting, white;
         public byte tint;
         public Part from;                    // the part it came off (while that is still there: not hit by it for a moment)
         float still, fading = -1f, shownHeat = -1f;
+        /// <summary>Going away (too many about, or its time up): shrinking into the ground, and given nothing more (see Crashes.Settle).</summary>
+        public bool Fading => fading >= 0f;
         int finalLayer;
         float layerUntil;
         Vector3 scale = Vector3.one;
@@ -101,7 +109,7 @@ namespace Fragmentation
 
         /// <summary>A piece made from a mesh already laid out about its own middle, put at a place in the scene and set moving.</summary>
         public static Piece Make(Mesh mesh, Material[] painted, Color[] tints, Vector3 at, Quaternion turn, Vector3 velocity, Vector3 spin, float mass, float area,
-                                 float heat, float burns, byte tint, bool white, Part from)
+                                 float heat, float burns, byte tint, bool white, Part from, float density = 0f)
         {
             int final = Layers.Final, first = Layers.Spawn >= 0 ? Layers.Spawn : final;
             Piece p = null;
@@ -138,7 +146,7 @@ namespace Fragmentation
             rb.angularVelocity = spin;
             p.id = ++ids;
             p.mesh = mesh;
-            p.mass = rb.mass; p.area = area; p.heat = heat; p.burns = burns; p.tint = tint; p.white = white; p.from = from;
+            p.mass = rb.mass; p.area = area; p.density = density; p.heat = heat; p.burns = burns; p.tint = tint; p.white = white; p.from = from;
             p.reach = b.extents.magnitude;
             p.born = Time.time;
             p.life = Frag.Lasts * Random.Range(0.8f, 1.2f);
@@ -292,7 +300,9 @@ namespace Fragmentation
                 // bottom; and put out, if it was alight.
                 if (water && Fragmentation.Water.Depth((Vector3d)p.rb.worldCenterOfMass) > 0f)
                 {
-                    float dense = p.mass / Mathf.Max(p.area, 0.01f) < 0.05f ? 2.7f : 7.8f;      // (a sheet of skin, or a lump of steel)
+                    // (a sheet of skin, or a lump of steel: what it is made of, where that was said; else, as before, by its weight for its
+                    // area, which a crumpled piece of sheet carrying several times its outline's metal would mistake for steel)
+                    float dense = p.density > 0f ? p.density : p.mass / Mathf.Max(p.area, 0.01f) < 0.05f ? Aluminium : Steel;
                     p.rb.AddForce(-g * (Fragmentation.Water.Density / dense), ForceMode.Acceleration);
                     Vector3 through = v + frame;
                     float s2 = through.sqrMagnitude;
@@ -368,14 +378,18 @@ namespace Fragmentation
             if (burns > 0f) burns -= Time.deltaTime;
         }
 
-        /// <summary>A blast at a place throws the pieces near it: light thin ones further than heavy ones.</summary>
-        public static void Blast(Vector3 at, float radius, float push)
+        /// <summary>
+        /// A blast at a place throws the pieces near it: light thin ones further than heavy ones, the nearer the harder. Those made after
+        /// the piece numbered skipAfter (see LastId) are left alone: a tank going up has already thrown its own pieces out at the speed its
+        /// burst gave them, and pushed again by its blast they went out twice as hard.
+        /// </summary>
+        public static void Blast(Vector3 at, float radius, float push, int skipAfter = int.MaxValue)
         {
             if (radius <= 0f || push <= 0f) return;
             float r2 = radius * radius;
             foreach (Piece p in all)
             {
-                if (p == null || p.rb == null) continue;
+                if (p == null || p.rb == null || p.id > skipAfter) continue;
                 Vector3 away = p.transform.position - at;
                 float d2 = away.sqrMagnitude;
                 if (d2 > r2) continue;

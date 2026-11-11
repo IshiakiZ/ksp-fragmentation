@@ -31,10 +31,45 @@ namespace Fragmentation
             g += s * u.z * u.x; h += s * u.z * u.y; i += s * u.z * u.z;
         }
 
+        /// <summary>
+        /// How small the determinant may be, against the cube of the largest of the three turnings along the axes, before the matrix is
+        /// taken as one that cannot be turned back. A share, not a fixed figure: a fixed 1e-12 caught every lone part under some 20 kg and
+        /// 0.3 m (5 kg and 0.2 m turns at about 3e-5 t m2 each way, a determinant of about 3e-14), and gave it the old stand-in of a
+        /// thousand tonne square metres, so that no blow could ever set the small wrecks a crash makes tumbling. A craft of real parts is
+        /// never near it: the game's own bodies each turn some way about every axis, and even a long thin stack, 40 m of 2.5 m tanks,
+        /// turns only about 170 times as hard end over end as about its length, a share of about 3e-5.
+        /// </summary>
+        public static float Singular = 1e-6f;
+#if DEV
+        /// <summary>For the development build: how many matrices have been turned back, and how many of them were taken as singular.</summary>
+        public static int Inverted, Fallbacks;
+#endif
+
         public Mat3 Inverse()
         {
             float det = a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g);
-            if (Mathf.Abs(det) < 1e-12f) return new Mat3 { a = 1e-3f, e = 1e-3f, i = 1e-3f };
+            float s = Mathf.Max(Mathf.Abs(a), Mathf.Max(Mathf.Abs(e), Mathf.Abs(i)));
+#if DEV
+            Inverted++;
+#endif
+            // (nothing to turn by at all: taken as not turning, as before. It cannot come from the game's bodies, which all turn somewhat)
+            if (s <= 0f)
+            {
+#if DEV
+                Fallbacks++;
+#endif
+                return new Mat3();
+            }
+            if (Mathf.Abs(det) < Singular * s * s * s)
+            {
+                // (all but singular: each axis by itself, as if it turned only about its own three axes. No axis is taken as turning more
+                // than a hundred times as easily as the hardest, so that a body all but flat one way is not set spinning without end that way)
+#if DEV
+                Fallbacks++;
+#endif
+                float least = Mathf.Max(1e-9f, 0.01f * s);
+                return new Mat3 { a = 1f / Mathf.Max(a, least), e = 1f / Mathf.Max(e, least), i = 1f / Mathf.Max(i, least) };
+            }
             float k = 1f / det;
             return new Mat3
             {

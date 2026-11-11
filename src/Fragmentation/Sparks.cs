@@ -17,8 +17,14 @@ namespace Fragmentation
         /// <summary>Throw so many sparks from a place, going as fast as v (they are thrown back off it and up), the ground's up being up.</summary>
         public static void Emit(Vector3 at, Vector3 v, Vector3 up, int n)
         {
+            float times = Frag.Times(Frag.SparkCount);
+            n = Frag.Times(n, times);
             if (n <= 0) return;
             Ready();
+            // (room for as many more as the page asks for)
+            ParticleSystem.MainModule main = system.main;
+            int most = Mathf.RoundToInt(400f * Mathf.Max(1f, times));
+            if (main.maxParticles != most) main.maxParticles = most;
             CelestialBody body = FlightGlobals.currentMainBody;
             Vector3 g = body != null ? (Vector3)FlightGlobals.getGeeForceAtPosition(at, body) : Vector3.down * 9.81f;
             ParticleSystem.ForceOverLifetimeModule force = system.forceOverLifetime;

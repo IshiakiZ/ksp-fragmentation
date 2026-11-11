@@ -30,11 +30,25 @@ namespace Fragmentation
         public bool planAsked;
         public Hull hull;                   // its skin as it is being torn (made the first time it is hurt)
         public float crushed;               // how much of its length blows have crushed, 0 to 1
+        public float fullMass;              // its dry mass as built, modules' too, tonnes (see Crashes.FullMass), as worked out in frame fullMassFrame
+        public int fullMassFrame = -1;
+        public bool crushedOnGround;        // the last blow that crushed it was the ground's or the water's, not another craft's: what it crushed off is slowed about the ground (see Crashes.MakePiece)
         public float bite;                  // how deep it has dug into soft ground, metres
         public float onSoil;                // when it last slid on soil (Time.fixedTime)
         public bool sever;                  // something was torn off it: see whether what holds it to the parts beside it still does
         public bool hullMissed;             // (said in the log once: its skin could not be torn)
         public float slidOn, groundWork;    // (for the readouts) metres it slid along the ground touching it, and the work done grinding its skin there, kJ
+        // (since 2026-11-04) the metal torn off its skin that no piece has taken yet, tonnes: owed by the part, folded into its next pieces
+        // whatever tore them off, and given to its pieces still about when it goes (see Crashes.CarryOwed); and those pieces, the latest
+        // PiecesKept of them, each with the number it was made with (a piece is put by and used again, numbered afresh: see Piece.Make)
+        public float owed;
+        internal const int PiecesKept = 24;
+        internal Piece[] pieces;
+        internal int[] pieceIds;
+        internal int piecesKept;
+#if DEV
+        public float spent;                 // (development build) the energy that has gone into hurting it, kJ: its hurt is this over what it takes the way each blow came (see Crashes.Capacity(h, way))
+#endif
 
         // ---- what touched it in the last step of the physics (summed; see Crashes.Step, which empties it)
         public int touches;
@@ -79,6 +93,31 @@ namespace Fragmentation
         {
             touches = 0; point = normal = Vector3.zero; slide = into = pushed = 0f;
             fresh = ground = paved = punched = struck = false; other = null;
+        }
+
+        /// <summary>Whether the k-th of its pieces kept is still that piece and still about: not gone, not put by and used again, not fading away.</summary>
+        internal bool Still(int k)
+        {
+            Piece p = pieces[k];
+            return p != null && p.id == pieceIds[k] && p.rb != null && !p.Fading && p.gameObject.activeSelf;
+        }
+
+        /// <summary>A piece made of its skin kept, for what it owes to be given to (those no longer about let go first; if it still has as many as it keeps, the oldest).</summary>
+        internal void Keep(Piece p)
+        {
+            if (p == null) return;
+            if (pieces == null) { pieces = new Piece[PiecesKept]; pieceIds = new int[PiecesKept]; }
+            int n = 0;
+            for (int k = 0; k < piecesKept; k++)
+                if (Still(k)) { pieces[n] = pieces[k]; pieceIds[n] = pieceIds[k]; n++; }
+            for (int k = n; k < piecesKept; k++) pieces[k] = null;
+            if (n >= PiecesKept)
+            {
+                for (int k = 1; k < n; k++) { pieces[k - 1] = pieces[k]; pieceIds[k - 1] = pieceIds[k]; }
+                n--;
+            }
+            pieces[n] = p; pieceIds[n] = p.id;
+            piecesKept = n + 1;
         }
 
         float lawnAt = -10f;                // when the ground under it was last looked at (see Ground.Lawn), and what it was

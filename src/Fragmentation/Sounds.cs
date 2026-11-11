@@ -42,8 +42,38 @@ namespace Fragmentation
         static GameObject holder;
         static readonly List<AudioSource> pool = new List<AudioSource>();
         static int next;
-        static float crunchAt = -1f, tearAt = -1f, clangAt = -1f, splashAt = -1f;
+        static float splashAt = -1f;
         static readonly System.Random luck = new System.Random(20261017);
+
+        // Each kind of blow is heard at most so often (docs/sound-rules.md, M6: a crash of a hundred parts is not a hundred crunches):
+        // a window opens with the first one heard, a crunch's 60 ms, a clang's 120 ms (it rings for a second), a tear's 80 ms. Within it
+        // only a blow plainly louder than the loudest heard in it so far is heard as well (LouderBy: 1.6 times as loud, about 4 dB, which
+        // is a difference anyone hears), and no more than InWindow in all; that one is then the window's loudest, and the window is not
+        // begun again. So the blows of one step, which come in whatever order the parts are looked at, are heard by the heaviest of
+        // them, not by the first. None is kept to be played later: a sound late of what is seen is worse than one not heard (C5).
+        const int Crunches = 0, Clangs = 1, Tears = 2;
+        static readonly float[] windowLength = { 0.06f, 0.12f, 0.08f };
+        static readonly float[] windowAt = { -1f, -1f, -1f }, windowLoudest = new float[3];
+        static readonly int[] windowHeard = new int[3];
+        /// <summary>How much louder than the loudest of its window a blow must be to be heard in it as well (1.6: about 4 dB).</summary>
+        public static float LouderBy = 1.6f;
+        /// <summary>The most of one kind of blow heard in one window, the first included.</summary>
+        public static int InWindow = 2;
+        /// <summary>
+        /// How steeply a blow's loudness rises with its energy, as a power of the share of the way from 1 kJ to 2 MJ (by the tenfolds):
+        /// 1, the old curve, some 3 dB a tenfold of energy near the top; 2, about 6 dB a tenfold there, nearer what is heard (the sound
+        /// of a blow is a share of its energy, and its pressure goes as the square root of that: 10 dB a tenfold).
+        /// </summary>
+        public static float HitCurve = 2f;
+#if DEV
+        // (development build, see Tests.Heard: of each kind, crunches with thuds, clangs and tears, how many were heard, how many held
+        // back by their window, how many heard within a window for being louder, and the most heard in any one window; blows too faint
+        // to be heard; sources taken over from a quieter sound when all ten were playing, and sounds not played because every one
+        // playing was louder; and the last blow's energy, kilojoules, mass, tonnes, and loudness)
+        internal static readonly int[] DevHeard = new int[3], DevHeld = new int[3], DevLouder = new int[3], DevMost = new int[3];
+        internal static int DevFaint, DevTaken, DevDropped;
+        internal static float DevEnergy, DevMass, DevLoud;
+#endif
 
         sealed class Loop
         {
@@ -82,6 +112,7 @@ namespace Fragmentation
         /// <summary>(Each frame.) The sounds made into clips once they are ready; each sliding wreck's grinding brought to how loud it should be.</summary>
         public static void Frame()
         {
+            if (Hush.Paused) return;     // (docs/sound-rules.md, B1: a loop paused would be started again below)
             if (crunch == null && made != null) Clips(made);
             if (crunch != null && !recordedAsked) AskRecorded();
             if (loops.Count == 0) return;
@@ -110,7 +141,8 @@ namespace Fragmentation
         {
             if (s == null) return;
             s.transform.position = at;
-            s.volume += (to * GameSettings.SHIP_VOLUME - s.volume) * k;
+            Dull(s, at);
+            s.volume += (to * Frag.Times(Frag.Loudness) * GameSettings.SHIP_VOLUME - s.volume) * k;
             s.pitch = pitch;
             if (s.volume > 0.002f && !s.isPlaying) { s.timeSamples = luck.Next(0, Math.Max(1, s.clip.samples - 1)); s.Play(); }
         }
@@ -130,9 +162,10 @@ namespace Fragmentation
             }
             l.last = Time.time;
             l.at = at;
-            // (a few kilowatts is a scuff, faint; a megawatt, a big wreck at speed, as loud as these get)
-            l.want = Mathf.Clamp01((Mathf.Log10(Mathf.Max(power, 1f)) - 3.4f) / 2.6f) * 0.9f;
-            l.wantSteel = paved ? Mathf.Clamp01((Mathf.Log10(Mathf.Max(steelPower, 1f)) - 3.4f) / 2.4f) * 0.75f : 0f;
+            // (a few kilowatts is a scuff, faint; a megawatt, a big wreck at speed, as loud as these get; by the air that carries it)
+            float air = Air(at, out _);
+            l.want = Mathf.Clamp01((Mathf.Log10(Mathf.Max(power, 1f)) - 3.4f) / 2.6f) * 0.9f * air;
+            l.wantSteel = paved ? Mathf.Clamp01((Mathf.Log10(Mathf.Max(steelPower, 1f)) - 3.4f) / 2.4f) * 0.75f * air : 0f;
             l.pitch = Mathf.Lerp(0.72f, 1.25f, Mathf.Clamp01(speed / 70f));
             if (l.surface == null || l.paved != paved)
             {
@@ -143,25 +176,69 @@ namespace Fragmentation
             if (l.steel == null && l.wantSteel > 0.01f) l.steel = Source(steelLoop, true, "Fragmentation steel dragged");
         }
 
-        /// <summary>A blow: where, how fast into the ground (m/s), the mass of what struck (tonnes), on paving or not, steel or not.</summary>
+        /// <summary>
+        /// A blow: where, how fast into the ground (m/s), the mass the blow stopped (tonnes: the share of the craft behind the place
+        /// struck, a full tank's propellant with it, as Crashes.Blow reckons it, and that share of the craft's energy the blow was given),
+        /// on paving or not, steel or not.
+        /// </summary>
         public static void Hit(Vector3 at, float into, float mass, bool paved, bool steel)
         {
             if (!Wanted || crunch == null) return;
+            // (the blow's whole energy, joules, the share the part could take without harm with it: the ground is struck as hard. A full
+            // FL-T800 at 25 m/s is some 1.4 MJ, and as loud as these get; the same tank empty, 0.16 MJ, about 6 dB quieter by HitCurve)
             float energy = 500f * Mathf.Max(mass, 0.01f) * into * into;
-            float loud = Mathf.Clamp01((Mathf.Log10(Mathf.Max(energy, 1f)) - 3f) / 3.3f);
-            if (loud < 0.05f) return;
+            float loud = Mathf.Pow(Mathf.Clamp01((Mathf.Log10(Mathf.Max(energy, 1f)) - 3f) / 3.3f), Mathf.Max(0.1f, HitCurve));
+#if DEV
+            DevEnergy = energy / 1000f; DevMass = mass; DevLoud = loud;
+#endif
+            if (loud < 0.05f)
+            {
+#if DEV
+                DevFaint++;
+#endif
+                return;
+            }
             float now = Time.time;
             if (steel && paved)
             {
-                if (now - clangAt < 0.12f) return;
-                clangAt = now;
+                if (!Let(Clangs, loud, now)) return;
                 Play(clang[luck.Next(clang.Length)], at, loud, 0.9f + 0.2f * (float)luck.NextDouble());
                 return;
             }
-            if (now - crunchAt < 0.06f) return;
-            crunchAt = now;
+            if (!Let(Crunches, loud, now)) return;
             AudioClip[] from = paved ? crunch : thud;
             Play(from[luck.Next(from.Length)], at, loud, 0.85f + 0.3f * (float)luck.NextDouble() - 0.1f * Mathf.Clamp01(mass / 5f));
+        }
+
+        /// <summary>Whether a blow of that kind, so loud, is heard now (see LouderBy); if it is, the window is told of it.</summary>
+        static bool Let(int kind, float loud, float now)
+        {
+            if (now - windowAt[kind] >= windowLength[kind])
+            {
+                windowAt[kind] = now;
+                windowLoudest[kind] = loud;
+                windowHeard[kind] = 1;
+            }
+            else if (windowHeard[kind] < InWindow && loud > LouderBy * windowLoudest[kind])
+            {
+                windowLoudest[kind] = loud;
+                windowHeard[kind]++;
+#if DEV
+                DevLouder[kind]++;
+#endif
+            }
+            else
+            {
+#if DEV
+                DevHeld[kind]++;
+#endif
+                return false;
+            }
+#if DEV
+            DevHeard[kind]++;
+            DevMost[kind] = Math.Max(DevMost[kind], windowHeard[kind]);
+#endif
+            return true;
         }
 
         /// <summary>A part striking the water: where, how fast into it (m/s), its mass (tonnes) and how much of it meets the water (m²).</summary>
@@ -177,37 +254,113 @@ namespace Fragmentation
             Play(splash[luck.Next(splash.Length)], at, loud, 0.8f + 0.3f * (float)luck.NextDouble() - 0.15f * Mathf.Clamp01(face / 10f));
         }
 
-        /// <summary>Metal torn: where, and how much of it (panels).</summary>
-        public static void Tear(Vector3 at, float much)
+        /// <summary>
+        /// Metal torn: where, and how much of it (square metres of skin). By the area, not by the panels: a part's panels are cut to its
+        /// size (HullPlan: some 0.6 m across on a full-size tank, 0.22 m on the smallest parts), so ten slivers of a small part are a
+        /// shorter tear than one large section of a big one. Some 3 m² of skin, eight panels of an FL-T800, is about as loud as eight
+        /// panels were before (0.3 by the root of the area, against 0.18 by the root of the panels of 0.36 m² each); 4.7 m² is the loudest.
+        /// </summary>
+        public static void Tear(Vector3 at, float area)
         {
-            if (!Wanted || tear == null || much <= 0f) return;
-            float now = Time.time;
-            if (now - tearAt < 0.08f) return;
-            tearAt = now;
-            Play(tear[luck.Next(tear.Length)], at, Mathf.Clamp01(0.35f + 0.18f * Mathf.Sqrt(much)), 0.85f + 0.35f * (float)luck.NextDouble());
+            if (!Wanted || tear == null || area <= 0f) return;
+            float loud = Mathf.Clamp01(0.35f + 0.3f * Mathf.Sqrt(area));
+            if (!Let(Tears, loud, Time.time)) return;
+            Play(tear[luck.Next(tear.Length)], at, loud, 0.85f + 0.35f * (float)luck.NextDouble());
         }
 
         static void Play(AudioClip clip, Vector3 at, float loud, float pitch)
         {
-            if (clip == null) return;
+            if (clip == null || Hush.Paused) return;
+            float air = Air(at, out float speed);
+            if (air <= 0f) return;
             if (holder == null) holder = new GameObject("Fragmentation sounds");
             while (pool.Count < 10) pool.Add(Source(null, false, "Fragmentation sound"));
+            float volume = loud * air * Frag.Times(Frag.Loudness) * GameSettings.SHIP_VOLUME;
             AudioSource s = null;
             for (int k = 0; k < pool.Count; k++)
             {
                 AudioSource c = pool[(next + k) % pool.Count];
                 if (c != null && !c.isPlaying) { s = c; next = (next + k + 1) % pool.Count; break; }
             }
-            if (s == null) { s = pool[next]; next = (next + 1) % pool.Count; }
-            if (s == null) return;
+            if (s == null)
+            {
+                // All ten playing: the one with least left to be heard gives way, if the new sound is louder than what is left of it. A
+                // sound stopped mid-way is cut off dead (docs/sound-rules.md, C1), so it is only ever the quietest, most of it heard already
+                // (a crunch dies away over its length, so what is left is about its volume times the share of it still to come); and a
+                // loud blow is never cut off for a smaller one: the smaller one is not heard, as it would not be under the loud one.
+                float least = float.MaxValue;
+                int pick = -1;
+                for (int k = 0; k < pool.Count; k++)
+                {
+                    AudioSource c = pool[k];
+                    if (c == null) continue;
+                    float length = c.clip != null ? c.clip.length : 0f;
+                    float left = length > 0f ? c.volume * Mathf.Clamp01(1f - c.time / length) : 0f;
+                    if (left < least) { least = left; pick = k; }
+                }
+                if (pick < 0 || least >= volume)
+                {
+#if DEV
+                    DevDropped++;
+#endif
+                    return;
+                }
+                s = pool[pick];
+                next = (pick + 1) % pool.Count;
+#if DEV
+                DevTaken++;
+#endif
+            }
             s.transform.position = at;
             s.clip = clip;
-            s.volume = loud * GameSettings.SHIP_VOLUME;
+            s.volume = volume;
             s.pitch = pitch;
-            // (heard as late as sound takes to get from there to the camera)
+            Dull(s, at);
+            // (heard as late as sound takes to get from there to the camera, in the air of the place; at once in vacuum, where
+            // what is heard at all came through the craft)
+            float far = Far(at);
+            s.PlayDelayed(speed > 0f ? far / speed : 0f);
+        }
+
+        static float Far(Vector3 at)
+        {
             Camera cam = FlightCamera.fetch != null ? FlightCamera.fetch.mainCamera : Camera.main;
-            float far = cam != null ? (cam.transform.position - at).magnitude : 0f;
-            s.PlayDelayed(far / 343f);
+            return cam != null ? (cam.transform.position - at).magnitude : 0f;
+        }
+
+        /// <summary>
+        /// How much of a sound made there the air carries to the camera (docs/sound-rules.md, P1): by the thinner air of the two
+        /// places, as a share of Kerbin's at sea level, to the power 0.7; and the speed of sound there (0 in vacuum). In vacuum
+        /// nothing comes through the air: a crash within 60 m of the camera is still heard, a quarter as loud and dull (Dull),
+        /// as through the craft the camera is with; one further off not at all.
+        /// </summary>
+        static float Air(Vector3 at, out float speed)
+        {
+            speed = 0f;
+            CelestialBody body = FlightGlobals.currentMainBody;
+            double here = 0, there = 0;
+            if (body != null && body.atmosphere)
+            {
+                there = FlightGlobals.getStaticPressure((Vector3d)at, body);
+                Camera cam = FlightCamera.fetch != null ? FlightCamera.fetch.mainCamera : Camera.main;
+                here = cam != null ? FlightGlobals.getStaticPressure((Vector3d)cam.transform.position, body) : there;
+                double density = there > 0 ? FlightGlobals.getAtmDensity(there, FlightGlobals.getExternalTemperature((Vector3d)at, body), body) : 0;
+                if (there > 0 && density > 0) speed = Mathf.Clamp((float)body.GetSpeedOfSound(there, density), 80f, 900f);
+            }
+            float thinner = (float)Math.Min(here, there) / 101.325f;
+            if (thinner > 0.001f && speed > 0f) return Mathf.Clamp01(Mathf.Pow(thinner, 0.7f) + 0.02f);
+            return Far(at) < 60f ? 0.25f : 0f;
+        }
+
+        /// <summary>The air takes the high notes first (docs/sound-rules.md, P4): all of a sound within 150 m, about 4 kHz of it at
+        /// 1 km, 1.5 kHz at 3 km; in vacuum (through the craft) 600 Hz.</summary>
+        static void Dull(AudioSource s, Vector3 at)
+        {
+            AudioLowPassFilter f = s.GetComponent<AudioLowPassFilter>();
+            if (f == null) return;
+            CelestialBody body = FlightGlobals.currentMainBody;
+            bool air = body != null && body.atmosphere && FlightGlobals.getStaticPressure((Vector3d)at, body) > 0.1;
+            f.cutoffFrequency = air ? Mathf.Clamp(22000f * Mathf.Pow(150f / Mathf.Max(Far(at), 150f), 0.9f), 400f, 22000f) : 600f;
         }
 
         static AudioSource Source(AudioClip clip, bool loop, string name)
@@ -226,6 +379,8 @@ namespace Fragmentation
             s.dopplerLevel = 0f;
             s.spread = 60f;
             s.volume = 0f;
+            go.AddComponent<AudioLowPassFilter>().cutoffFrequency = 22000f;
+            Hush.Add(s);
             return s;
         }
 

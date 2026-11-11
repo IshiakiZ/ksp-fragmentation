@@ -109,6 +109,11 @@ namespace Fragmentation
         public static float GrindSoil = 0.025f, GrindPaved = 0.03f;        // of the work the drag does, the share that tears at the skin that touches
         public static float SkinShare = 0.6f;          // grinding a part's whole skin away takes this share of what crushing it right through would
         public static float GrazeFriction = 0.5f;      // metal dragged along metal: the share of the push between them that tears at them
+        // (a round tank struck side-on: the mean force it is flattened by, as a share of the force it folds up by end-on, empty and full. See Capacity(h, way))
+        public static float LatEmpty = 0.3f, LatFull = 0.7f;
+        // (and never weaker side-on than this share of end-on, however long and thin the tank: its rings and its domes still hold its
+        // round. The stock FL-T800 empty comes to a tenth by LatEmpty, so this floors only what is longer and thinner than that)
+        public static float SideLeast = 0.1f;
         // ---- a part with no skin to tear (an engine: steel, its meshes whole)
         public static float FrictionSteel = 0.7f, GougeSteel = 1.2f;       // dragged along paving: its friction whole, and broken (jagged steel gouging the paving)
         public static float CatchPaved = 0.35f;        // and what its catching on the paving as it tumbles adds, per metre a second of speed
@@ -567,6 +572,9 @@ namespace Fragmentation
         void Punched(Part p, RaycastHit hit)
         {
             if (p == null) return;
+#if DEV
+            PunchedSays(p, hit);
+#endif
             Hits h = p.GetComponent<Hits>();
             if (h == null || !h.armed) return;
             Vector3 up = (Vector3)FlightGlobals.getUpAxis(p.transform.position);
@@ -579,6 +587,43 @@ namespace Fragmentation
             h.ground = true;
             h.punched = true;
         }
+
+#if DEV
+        /// <summary>
+        /// (development build, 2026-11-10) Each time the game's guard puts a part back on top (it has moved more than 0.1 m in a step, and
+        /// the line from where its middle was to where it is crossed the ground: CollisionEnhancer), how fast it goes on (the guard has by
+        /// then put it 0.25 m above where the line crossed and sent it back at a fifth of its speed; KSP.log's own "Collision Enhancer
+        /// Punch Through - vel" line just before gives the speed it came at), where its middle is against the underside of its colliders
+        /// straight below it (the guard goes by the middle; a part whose colliders all stand
+        /// above it rests with its middle under the ground), whether those are this mod's hull, how far it has dug in, and what was crossed.
+        /// After a crash by the pad that day one nose cone was put back on top 18 times in ten seconds, every third of a second, the
+        /// owner: "everything is glitching and teleporting up and down rapidly".
+        /// </summary>
+        static void PunchedSays(Part p, RaycastHit hit)
+        {
+            Vector3 o = p.transform.position;
+            Vector3 up = (Vector3)FlightGlobals.getUpAxis(o);
+            float lowest = float.MaxValue;
+            int n = 0;
+            foreach (Collider c in p.GetComponentsInChildren<Collider>(false))
+            {
+                if (c == null || !c.enabled || c.isTrigger) continue;
+                // (its own only: the parts fixed on below it hang under it, and theirs gave "30 m" (the probe's own depth) for a
+                // part in the middle of a whole rocket; and only those whose nearest point the physics can find)
+                if (c.GetComponentInParent<Part>() != p) continue;
+                if (!(c is BoxCollider || c is SphereCollider || c is CapsuleCollider || (c is MeshCollider mc && mc.convex))) continue;
+                Vector3 under = c.ClosestPoint(o - up * 30f);
+                lowest = Mathf.Min(lowest, Vector3.Dot(under - o, up));
+                n++;
+            }
+            Hits h = p.GetComponent<Hits>();
+            string where = n == 0 ? "no colliders to stand on" : lowest <= 0f ? "its middle " + (-lowest).ToString("F2") + " m above the underside of its colliders"
+                : "its middle " + lowest.ToString("F2") + " m BELOW all its colliders";
+            Note((h != null ? Name(h) : p.partInfo != null ? p.partInfo.title : p.name) + " put back on top by the game at " + (p.rb != null ? p.rb.velocity.magnitude.ToString("F1") : "?")
+                 + " m/s: " + where + (h != null && h.hull != null && h.hull.boxed ? "; its colliders this mod's hull" + (h.hull.GuardSq > 0f ? ", the guard told " + Mathf.Sqrt(h.hull.GuardSq).ToString("F2") + " m a step" : "") : "") + (h != null && h.bite > 0.01f ? "; dug in " + h.bite.ToString("F2") + " m" : "")
+                 + "; across " + (hit.collider != null ? hit.collider.name : "?") + (h != null && !h.armed ? " (not watched)" : ""));
+        }
+#endif
 
         /// <summary>A part's torn skin: made the first time it is wanted, if its panels are cut by then (they are cut while the craft falls).</summary>
         static Hull HullFor(Hits h)
@@ -617,6 +662,7 @@ namespace Fragmentation
             long began = System.Diagnostics.Stopwatch.GetTimestamp();
             stepBegan = began;
             if (Time.frameCount != budgetFrame) { budgetFrame = Time.frameCount; frameSpent = 0; didBreak = didSever = didSpawn = didLater = didGoUp = false; }
+            HoldParted();
             try
             {
                 long t = Prof.Now;
@@ -775,13 +821,59 @@ namespace Fragmentation
                 long t0 = Prof.Now;
                 // (how many of its parts strike the ground in this step: the ground's grip in the blow is shared among them, see Blow)
                 strikes = 0;
+                // (and the energy those strikes have between them: see energyScale. Summed over the parts that strike beyond their tolerance,
+                // each by the mass a push there has to move and by how fast it was going into the ground before this step)
+                float s1 = 0f, s2 = 0f, s3 = 0f;
                 foreach (Hits h in touching)
                 {
                     if (!h.ground) continue;
                     Vector3 c = h.point / h.touches, n = (h.normal / h.touches).normalized;
                     Vector3 before = h.lastKnown ? h.lastVelocity + Vector3.Cross(h.lastSpin, c - h.lastCentre) + g * dt : b.At(c);
-                    if (-Vector3.Dot(before + frame, n) > Floor(h)) strikes++;
+                    float into = -Vector3.Dot(before + frame, n);
+                    if (into > Floor(h)) strikes++;
+                    if (into > h.Tolerance && n.sqrMagnitude > 0.5f)
+                    {
+                        float mi = b.MassAlong(c, n);
+                        s1 += mi;
+                        s2 += mi * into;
+                        s3 += mi * into * into;
+                    }
                 }
+                // The blows of one step spend no more energy than the craft brings into the ground. Each part's blow is worked out as if
+                // that part alone stopped the mass a push there has to move (see Blow), and the pushes of the parts before it in this step
+                // never lessen the speed the next one's energy is reckoned from. One strike alone is right so (half the mass along it, times
+                // its speed squared, is the energy that point of the craft has into the ground); but a beam of five equal tanks coming down
+                // flat has masses along it of about a third, two thirds, the whole, two thirds and a third of the craft at its five parts,
+                // and all five blows together asked three times the craft's own energy into the ground, the middle tank crushed as if it
+                // alone had stopped the whole craft. What the craft has is half its mass times the speed its strikes come down at, on
+                // average by the mass behind each (s2/s1); what the blows ask is half the sum of each one's mass times its speed squared
+                // (s3). So every blow of the step is scaled by the one to the other, never above one: a single strike, whose mass along it
+                // is never more than the craft's, is as it was, and so is a nose-first or corner-first crash; a craft that comes down flat
+                // shares one budget among the parts it lands on, as a real belly landing does (which is why one is survivable and a
+                // nose-first crash at the same speed is not). The craft's turning is left out, which errs on the side of less: a tumbling
+                // wreck's corner strikes are single strikes, and scaled by one anyway.
+                energyScale = 1f;
+                if (s3 > 0f && s1 > 0f)
+                {
+                    float mean = s2 / s1;
+                    // (never below a thousandth, only so as never to divide by nothing in Blow: strikes that come down alike give the craft's
+                    // mass over the sum of their masses along them, a few tenths for a craft that lands flat)
+                    float scale = Mathf.Clamp(b.M * mean * mean / s3, 1e-3f, 1f);
+                    if (EnergyBudget) energyScale = scale;
+#if DEV
+                    // (reckoned with the budget stood aside as well, to compare: what the blows asked is then what they spent)
+                    BudgetLast = scale;
+                    BudgetAsked = 0.5f * s3;
+                    BudgetHad = 0.5f * b.M * mean * mean;
+                    if (scale < BudgetLeast) BudgetLeast = scale;
+                    if (scale < 0.95f)
+                    {
+                        BudgetSteps++;
+                        Note(w.name + "'s blows of one step: asked " + BudgetAsked.ToString("F1") + " kJ, had " + BudgetHad.ToString("F1") + " kJ, " + (EnergyBudget ? "each scaled by " : "budget off, would be scaled by ") + scale.ToString("F2"));
+                    }
+#endif
+                }
+                bool jolted = strikes > 0;
                 foreach (Hits h in touching)
                 {
                     Vector3 c = h.point / h.touches, n = (h.normal / h.touches).normalized;
@@ -803,7 +895,7 @@ namespace Fragmentation
                         Vector3 mine = h.lastKnown ? h.lastVelocity : b.At(c);
                         Vector3 them = theirs != null && theirs.lastKnown ? theirs.lastVelocity : h.otherVelocity;
                         float into = -Vector3.Dot(mine - them, n);
-                        if (into > Floor(h)) Collide(w, h, c, n, into, now);
+                        if (into > Floor(h)) { Collide(w, h, c, n, into, now); jolted = true; }
                         // Dragged along the other craft (a graze): metal torn along metal. The work is the physics' own push
                         // between the two times how fast they slide, half of it this part's.
                         float t = h.Tolerance;
@@ -811,6 +903,9 @@ namespace Fragmentation
                         {
                             float work = 0.5f * GrazeFriction * h.pushed * h.slide * Mathf.Clamp01((h.slide - 0.5f * t) / t);
                             h.damage += work / Capacity(h);
+#if DEV
+                            h.spent += work;
+#endif
                             Hull hull = HullFor(h);
                             if (hull != null) hull.Grind(c, n, work, SkinToughness(h));
                         }
@@ -823,8 +918,17 @@ namespace Fragmentation
                 t0 = Prof.Now;
                 Slide(w, dt, frame, g, now);
 
+                Vector3 dV = b.V - V0, dW = b.W - W0;
                 b.Commit(v, V0, W0);
-                v.IgnoreGForces(4);
+                // The game's reading of the g the craft feels held only while this step jolts it: a part striking the ground or another
+                // craft, or this mod changing how it moves by more than two g (a blow, a bounce held down), which the game would read as
+                // many g and hurt crew and parts by. Through 0.5.0 it was held in every step anything touched, and the game keeps the reading
+                // it had while it is held: a craft come down hard and then rolling to a stop and lying still kept the blow's until it was
+                // let go (the owner, 2026-10-27: "the kerbal heads jitter a bunch when you teleport the rocketship to a spot and they sit
+                // there". A Kerbal X set down at 2 m broke up under its pod, which came down at 42 m/s and lay still: the reading held at
+                // 16 g for 6 s, Smooth Portraits' heads thrown to their straps by it, and the game's own shake of the portraits' cameras,
+                // which goes with the craft's acceleration, at its most, swinging them up to 10 degrees, 5 from one frame to the next.)
+                if (jolted || dV.magnitude > Jolt * dt || dW.magnitude * Size(v) > Jolt * dt) v.IgnoreGForces(4);
                 Prof.Add(Prof.Slide, t0);
 
                 // ---- what is now to become of each part that was touched
@@ -906,9 +1010,14 @@ namespace Fragmentation
             float meant = m * added / Mathf.Max(m + added, 1e-4f);
             float t = h.Tolerance;
             float energy = into > t ? 0.5f * meant * (into * into - t * t) : 0f;
-            float cap = Capacity(h);
+            // (by the way it goes in: a tank coming down on its side flattens on the water as on the ground, see Capacity(h, way))
+            float cap = Capacity(h, up);
             float share = cap > 0f ? energy / cap : 0f;
             h.damage += share;
+#if DEV
+            h.spent += energy;
+            Faced(h, up, "the water");
+#endif
             h.crushed = Mathf.Min(1.2f, h.crushed + share);
             h.hardest = Mathf.Max(h.hardest, into);
             w.hardest = Mathf.Max(w.hardest, into);
@@ -917,7 +1026,7 @@ namespace Fragmentation
             if (hull != null && share > 0f)
             {
                 float length = Mathf.Max(0.2f, LengthAlong(h, up));
-                if (share > 0.02f) { hull.CrushAt(c, up, Mathf.Min(share, 1f) * length); h.sever = true; }
+                if (share > 0.02f) { hull.CrushAt(c, up, Mathf.Min(share, 1f) * length); h.sever = true; h.crushedOnGround = true; }
                 else hull.DentAt(c, up, Mathf.Clamp(share * 6f * length, 0.02f, 0.25f * length), Mathf.Clamp(0.35f * length, 0.3f, 1.5f));
                 if (!hull.shown) hull.Show();
             }
@@ -957,6 +1066,9 @@ namespace Fragmentation
             if (away > most) b.V -= n * (away - most);
         }
 
+        /// <summary>A change to how a craft moves, as an acceleration (m/s²), past which the game is kept from reading it as g felt (see Step): two g.</summary>
+        const float Jolt = 2f * 9.81f;
+
         /// <summary>Below this speed into something, touching it is only touching it.</summary>
         static float Floor(Hits h) => Mathf.Max(2.5f, 0.45f * h.Tolerance);
 
@@ -966,25 +1078,124 @@ namespace Fragmentation
         /// touches down within its parts' tolerances is not hurt. Beyond that it takes as much again as a blow of a few times its
         /// tolerance would bring (the setting "how tough parts are" scales those few times).
         /// </summary>
-        static float Capacity(Hits h)
+        internal static float Capacity(Hits h)
         {
-            Part p = h.part;
             float k = Toughness * Mathf.Max(0.1f, Frag.Tough), t = h.Tolerance;
             // (its structure takes the blow, so its own mass without what is in it: what is in it adds to the blow and nothing to the strength.
             // So a full tank, heavy and no stronger, bursts sooner than an empty one, as real ones do: see the Research page)
-            float m = Mathf.Max(0.005f, p.prefabMass > 0f ? p.prefabMass : p.mass);
+            // (and its mass as built, not as the skin torn away has left it: how much it has been hurt is kept as a share of this, in
+            // h.crushed, and what is left of it is that share taken off. See FullMass)
+            float m = Mathf.Max(0.005f, FullMass(h));
             return m * 0.5f * Mathf.Max(0.5f, k * k - 1f) * t * t;
         }
 
+        /// <summary>
+        /// What a part takes (as Capacity) from a blow that comes at it along this way (the world's, a unit length). A thin-walled round
+        /// tank is much stronger end-on than side-on. Struck end-on its wall folds up in rings, one after another, and the force it takes to
+        /// fold it is high: some 245 kN for a 1.25 m drum of 3 mm aluminium, by Abramowicz and Jones's rule for the progressive folding of
+        /// thin tubes. Struck side-on it is flattened instead, by four hinges running along it, and the force that takes is twenty to forty
+        /// times smaller. What is in it stiffens it side-on beside an empty one: a liquid (or a solid fuel's cast grain) does not squash, so a
+        /// full tank holds its round until its wall bursts, where an empty one lies down flat (though even full it is weaker side-on than
+        /// end-on: an FL-T800 full, 0.23 of it). So the mean force it is crushed by side-on is reckoned as a share of
+        /// the end-on one, LatEmpty when empty and LatFull when full; and as the crushing goes over its diameter side-on and its length
+        /// end-on, what it takes side-on is that share times its diameter over its length (an FL-T800, 1.25 m across and 3.75 m long, empty:
+        /// a tenth of what it takes end-on; never less than SideLeast). In between, by the square of how nearly end-on the blow comes. Never more than end-on: a squat
+        /// round part is no stronger side-on for being short. A part that holds nothing a tank holds, or is not round (or an engine, whose bell and pump are whole metal,
+        /// or one whose skin has not been read) takes the same whichever way it is struck.
+        /// </summary>
+        internal static float Capacity(Hits h, Vector3 worldWay)
+        {
+            float cap = Capacity(h);
+            float side = SideOn(h, out _, out _);
+            if (side >= 1f) return cap;
+            // (the game's tanks stand along their own second axis, their up: as GoUp and Frames.Round read them)
+            float c = Mathf.Abs(Vector3.Dot(worldWay, h.part.transform.up));
+            float cc = Mathf.Min(1f, c * c);
+            return cap * (cc + (1f - cc) * side);
+        }
+
+        /// <summary>
+        /// What a round part takes side-on, as a share of what it takes end-on (1 for a part that is not round: see Capacity(h, way)); how full
+        /// it is, 0 to 1, by the mass of what is in it that does not squash; and the share of the end-on force it is flattened by.
+        /// </summary>
+        internal static float SideOn(Hits h, out float fill, out float lat)
+        {
+            fill = 0f;
+            lat = 1f;
+            if (h.part == null || h.plan == null || !h.plan.ready || h.plan.failed || h.plan.engine) return 1f;
+            if (!Frames.Round(h.plan, out float radius, out float length) || length <= 0f) return 1f;
+            // (only a tank, a thin wall about what it holds: a girder, a hub, a battery or a box that happens to be as wide as it is
+            // deep, which the plan's bounds alone take for round, is no weaker side-on)
+            float f = Fill(h.part, out bool holds);
+            if (!holds) return 1f;
+            fill = f;
+            lat = Mathf.Lerp(LatEmpty, LatFull, fill);
+            return Mathf.Clamp(lat * 2f * radius / length, Mathf.Min(1f, SideLeast), 1f);
+        }
+
+        /// <summary>
+        /// How full a part is of what does not squash, 0 to 1, by mass: its liquids, the cryogenic ones too while they are in it, and a
+        /// solid fuel's grain (cast into its case, it stiffens it as a liquid does). Not a gas (xenon, the air an intake takes), nor what has
+        /// no mass (electric charge). Whether it holds any such thing at all, full or empty: a tank, and not a girder.
+        /// </summary>
+        static float Fill(Part p, out bool any)
+        {
+            any = false;
+            if (p.Resources == null) return 0f;
+            double has = 0, holds = 0;
+            for (int i = 0; i < p.Resources.Count; i++)
+            {
+                PartResource r = p.Resources[i];
+                if (r == null || r.info == null || r.info.density <= 0f || r.maxAmount <= 0) continue;
+                string name = r.resourceName;
+                if (name.IndexOf("Gas", StringComparison.OrdinalIgnoreCase) >= 0 || name.IndexOf("Air", StringComparison.OrdinalIgnoreCase) >= 0) continue;
+                has += r.amount * r.info.density;
+                holds += r.maxAmount * r.info.density;
+            }
+            any = holds > 0;
+            return holds > 0 ? Mathf.Clamp01((float)(has / holds)) : 0f;
+        }
+
+        /// <summary>
+        /// A part's own mass as it was built, in tonnes, without what is in it and without what this mod has taken off for the skin
+        /// torn away: the one figure its strength, the toughness of its skin and the weight of its pieces are all reckoned by, so that
+        /// the three agree. Its base mass as built its skin keeps once torn (Hull.FullMass); before that it is the part's own figure,
+        /// which only the skin lowers. To that is added the dry mass its modules give it as built (TweakScale's larger tank, a B9 or
+        /// procedural part's, a stock variant's), worked out from that base: a tank scaled up twice holds eight times the propellant and
+        /// weighs some eight times as much, and reckoned by the base mass alone it burst at 240 m/s where the design means 89, and was
+        /// as weak as a tank an eighth of its size. Not what a part carries in its inventory, which is what is in it, as its propellant
+        /// is. Worked out once a frame for each part.
+        /// </summary>
+        internal static float FullMass(Hits h)
+        {
+            Part p = h.part;
+            if (p == null) return h.hull != null ? h.hull.FullMass : 0f;
+            int frame = Time.frameCount;
+            if (h.fullMassFrame == frame) return h.fullMass;
+            float built = h.hull != null ? h.hull.FullMass : p.prefabMass;
+            float mods = 0f;
+            for (int i = 0; i < p.Modules.Count; i++)
+            {
+                PartModule m = p.Modules[i];
+                if (!(m is IPartMassModifier mm) || m is ModuleInventoryPart) continue;
+                try { mods += mm.GetModuleMass(built, ModifierStagingSituation.CURRENT); } catch (Exception) { }
+            }
+            float full = built + mods;
+            // (a part with no mass of its own nor any its modules give it, as the game reckons it now, less what is in it)
+            if (full <= 0f) full = Mathf.Max(0f, p.mass - p.resourceMass);
+            h.fullMass = full;
+            h.fullMassFrame = frame;
+            return full;
+        }
+
         /// <summary>Kilojoules a square metre: what tearing a part's skin away along the ground takes.</summary>
-        static float SkinToughness(Hits h)
+        internal static float SkinToughness(Hits h)
         {
             // (by how heavy the structure is for its area, not by how hard a blow it takes: a capsule built to take a hard landing
             // is no harder to grind than a tank of the same weight of metal a square metre. At 0.38 kJ for each kilogram, a full-size
             // tank's skin, some 30 kg a square metre in the game, takes 11 kJ a square metre to tear away)
-            Part p = h.part;
             float area = h.plan != null && h.plan.ready ? h.plan.area : 4f;
-            float full = p.partInfo != null && p.partInfo.partPrefab != null ? p.partInfo.partPrefab.mass : Mathf.Max(0.005f, p.mass);
+            float full = Mathf.Max(0.005f, FullMass(h));
             return 0.38f * SkinShare / 0.6f * Mathf.Max(0.1f, Frag.Tough) * (full * 1000f) / Mathf.Max(0.05f, area);
         }
 
@@ -992,10 +1203,13 @@ namespace Fragmentation
         {
             Body b = w.body;
             float m = b.MassAlong(c, n);
-            // Only what is beyond the part's own tolerance hurts it (see Capacity).
+            // Only what is beyond the part's own tolerance hurts it (see Capacity); and of that, this blow's share of what the craft has
+            // to spend on all the blows of this step (see energyScale: one for a strike alone).
             float t = h.Tolerance;
-            float energy = into > t ? 0.5f * m * (into * into - t * t) : 0f;
-            float cap = Capacity(h), left = cap * Mathf.Max(0f, 1f - h.crushed);
+            float energy = into > t ? energyScale * 0.5f * m * (into * into - t * t) : 0f;
+            // (what it takes by the way it is struck: a round tank far more end-on than side-on, see Capacity(h, way). And what is left of
+            // it is the share of that not crushed yet: a blow one way after a blow the other is reckoned on the same share)
+            float cap = Capacity(h, n), left = cap * Mathf.Max(0f, 1f - h.crushed);
             float J, stopped;          // (stopped: the speed into the ground that the ground took out of the craft there, the physics' share and this mod's)
             string what;
             if (energy <= left)
@@ -1007,14 +1221,19 @@ namespace Fragmentation
             }
             else
             {
-                // crushed through: it takes what it can, and the craft goes on into the ground that much slower
-                float after = Mathf.Sqrt(Mathf.Max(0f, into * into - t * t - 2f * left / m));
+                // crushed through: it takes what it can, and the craft goes on into the ground that much slower (the part's share of
+                // the energy scaled as above, so what it takes is as much more of its own speed into the ground)
+                float after = Mathf.Sqrt(Mathf.Max(0f, into * into - t * t - 2f * left / (m * energyScale)));
                 J = Mathf.Max(0f, m * (still - after));
                 stopped = Mathf.Max(0f, into - after);
                 what = "crushed through";
             }
             float share = cap > 0f ? energy / cap : 0f;
             h.damage += share;
+#if DEV
+            h.spent += energy;
+            Faced(h, n, h.paved ? "paving" : "the ground");
+#endif
             h.crushed = Mathf.Min(1.2f, h.crushed + share);
             h.hardest = Mathf.Max(h.hardest, into);
             w.hardest = Mathf.Max(w.hardest, into);
@@ -1025,7 +1244,7 @@ namespace Fragmentation
             {
                 float length = Mathf.Max(0.2f, LengthAlong(h, n));
                 long tc = Prof.Now;
-                if (share > 0.02f) { hull.CrushAt(c, n, share * length); h.sever = true; }
+                if (share > 0.02f) { hull.CrushAt(c, n, share * length); h.sever = true; h.crushedOnGround = true; }
                 else hull.DentAt(c, n, Mathf.Clamp(share * 6f * length, 0.02f, 0.25f * length), Mathf.Clamp(0.35f * length, 0.3f, 1.5f));
                 Prof.Add(Prof.Crush, tc);
                 tc = Prof.Now;
@@ -1063,8 +1282,16 @@ namespace Fragmentation
                 else if (GripStrikes && solid) jt = Mathf.Max(jt, Friction * feel.Friction * Mathf.Min(m * stopped, b.M * middle * (1f + Restitution)) / (slide * Mathf.Max(1, strikes)));
                 jt = Mathf.Min(jt, b.MassAlong(c, along) * st * 0.9f);
                 impulse -= along * jt;
-                // (and that grip's work wears a part with no skin to tear, as the drag's does: see Slide)
-                if (solid && cap > 0f) h.damage += (hard ? WearPaved : WearSoil) * jt * st / cap;
+                // (and that grip's work wears a part with no skin to tear, as the drag's does: see Slide. Not by the way it was struck:
+                // the ground wears it along, not across)
+                float whole = Capacity(h);
+                if (solid && whole > 0f)
+                {
+                    h.damage += (hard ? WearPaved : WearSoil) * jt * st / whole;
+#if DEV
+                    h.spent += (hard ? WearPaved : WearSoil) * jt * st;
+#endif
+                }
             }
             b.Push(c, impulse);
             h.struck = true;
@@ -1087,13 +1314,41 @@ namespace Fragmentation
             if (into > 9f && energy > 0.05f * cap) Thud(w, h, c, into, now);
             Prof.Add(Prof.Thud, tf);
             tf = Prof.Now;
-            if (into > 3f && h.part != null) Sounds.Hit(c, into, h.part.mass, h.paved || struck.Hard, Solid(h));
+            // (heard by the blow's own energy: the mass it stopped, MassAlong's, with the propellant behind the place struck, not the part's
+            // dry mass, which made a full tank's blow, five to ten times the energy, sound like an empty one's; and that share of the craft's
+            // energy the blow was given, see energyScale)
+            if (into > 3f && h.part != null) Sounds.Hit(c, into, energyScale * m, h.paved || struck.Hard, Solid(h));
             Prof.Add(Prof.HitSound, tf);
             if (into > 6f) Note(Name(h) + " hit " + (h.paved ? "paving" : "the ground") + " at " + into.ToString("F0") + " m/s (" + u.magnitude.ToString("F0") + " m/s in all): " + what + ", hurt " + h.damage.ToString("F2"));
         }
 
         float thudAt = -10f;
         int strikes = 1;                     // how many parts of the craft being stepped strike the ground in this step
+        float energyScale = 1f;              // and the share of its own energy each of their blows is given, so that all of them spend no more than the craft has (see Step)
+        public static bool EnergyBudget = true;   // (development build: off, each blow has the whole of its own energy, as it had before the budget, to compare)
+#if DEV
+        // (development build: the last step whose blows were scaled, what they asked and what the craft had, kilojoules; the least scale
+        // since they were last cleared, and how many steps were scaled below 0.95. See Tests.Budget)
+        internal static float BudgetLast = 1f, BudgetAsked, BudgetHad, BudgetLeast = 1f;
+        internal static int BudgetSteps;
+        // (development build: the last part struck, the way it was struck and by what, to read what it took that way: see Tests.Facing)
+        internal static Hits FacedLast;
+        internal static Vector3 FacedWay;
+        internal static string FacedBy = "";
+        internal static int FacedSide, FacedEnd;
+        static void Faced(Hits h, Vector3 way, string by)
+        {
+            FacedLast = h;
+            FacedWay = way;
+            FacedBy = by;
+            if (SideOn(h, out _, out _) < 1f)
+            {
+                float c = Mathf.Abs(Vector3.Dot(way, h.part.transform.up));
+                if (c > 0.866f) FacedEnd++;
+                else if (c < 0.5f) FacedSide++;
+            }
+        }
+#endif
 
         /// <summary>
         /// A hard blow throws up dust and sparks, as the explosions mod makes them for a crash at that speed with the craft's weight behind it (and
@@ -1142,9 +1397,14 @@ namespace Fragmentation
             float share = theirs / (t + theirs);
             float energy = 0.5f * mu * (into * into - t * t) * (1f - Restitution * Restitution) * share;
             if (Propellant(h.part) > 20.0) energy *= 1.8f;
-            float cap = Capacity(h);
+            // (by the way it is struck, as on the ground: see Capacity(h, way))
+            float cap = Capacity(h, n);
             float hurt = energy / cap;
             h.damage += hurt;
+#if DEV
+            h.spent += energy;
+            Faced(h, n, "another craft");
+#endif
             h.crushed = Mathf.Min(1.2f, h.crushed + hurt);
             h.hardest = Mathf.Max(h.hardest, into);
             w.hardest = Mathf.Max(w.hardest, into);
@@ -1153,7 +1413,7 @@ namespace Fragmentation
             if (hull != null)
             {
                 float length = Mathf.Max(0.2f, LengthAlong(h, n));
-                if (hurt > 0.02f) { hull.CrushAt(c, n, hurt * length); h.sever = true; }
+                if (hurt > 0.02f) { hull.CrushAt(c, n, hurt * length); h.sever = true; h.crushedOnGround = false; }
                 else hull.DentAt(c, n, Mathf.Clamp(hurt * 6f * length, 0.02f, 0.25f * length), Mathf.Clamp(0.3f * length, 0.25f, 1.2f));
                 if (!hull.shown) hull.Show();
             }
@@ -1315,6 +1575,9 @@ namespace Fragmentation
                 float wear = solid ? work * (hard ? WearPaved : WearSoil) : 0f;
                 if (work > 0f) w.wrecked = true;
                 h.damage += solid ? wear / Capacity(h) : grind / Capacity(h) * 0.5f;
+#if DEV
+                h.spent += solid ? wear : grind * 0.5f;
+#endif
                 h.slidOn += sh * dt;
                 h.groundWork += solid ? wear : grind;
                 if (work > 0f && (hull = hull ?? HullFor(h)) != null)
@@ -1353,7 +1616,7 @@ namespace Fragmentation
                     if (sparks > 0) Sparks.Emit(at + normal * 0.05f, along, normal, Mathf.Min(sparks, 8));
                     // (and bits of it: chips of metal, bolts, as it is worn)
                     if (solid && Random.value < sh * dt * 0.12f)
-                        Bits.Emit(at + normal * 0.1f, along * Random.Range(0.3f, 0.7f) + normal * Random.Range(1f, 4f), 3f, Random.Range(1, 3), 0.015f, 0.07f, Random.value < 0.3f ? Bits.Kind.Bolt : Bits.Kind.Metal, 0f, 0.05f);
+                        Bits.Emit(at + normal * 0.1f, along * Random.Range(0.3f, 0.7f) + normal * Random.Range(1f, 4f), 3f, Random.Range(1, 3), 0.015f, 0.07f, Random.value < 0.3f ? Bits.Kind.Bolt : Bits.Kind.Metal, 0f, 0.05f, 0f, Bits.Grip(f, h.paved));
                 }
             }
             // the sound of it: as loud as the power the dragging takes
@@ -1386,8 +1649,12 @@ namespace Fragmentation
                 {
                     // (in a busy step, the pieces of what was torn off are made in the next ones: the panels are gone from the part at once,
                     // their pieces come a step or two later, where the part has got to by then)
-                    if (Spent()) { if (!spawnLater.Contains(h)) { spawnLater.Add(h); spawnLaterWreck.Add(w); } }
-                    else SpawnTorn(w, h, hull);
+                    // (and since 2026-11-10 behind any already waiting, and counted as the frame's one at least: made here, they did not
+                    // count, and the waiting ones then had one more part's pieces made in the same frame whatever the frame had spent. A
+                    // part's pieces are up to 45 ms of a crash's frame; the worst frames of a whole rocket coming down at 380 m/s by the pad
+                    // were 150 to 500 ms)
+                    if (Spent() || spawnLater.Count > 0) { if (!spawnLater.Contains(h)) { spawnLater.Add(h); spawnLaterWreck.Add(w); } }
+                    else { SpawnTorn(w, h, hull); didSpawn = true; }
                 }
                 // (a part about to go altogether takes its small parts with it: they are not let go first)
                 // (and an engine, whose meshes come away whole, once it is worn or crushed right through)
@@ -1414,7 +1681,14 @@ namespace Fragmentation
             Part p = h.part;
             bool fire = w != null && w.fireUntil > Time.time && w.firePart != null && w.firePart.transform != null && (w.firePart.transform.position - p.transform.position).sqrMagnitude < 36f;
             spawnHeat = fire ? 0.5f : 0f; spawnBurning = fire ? 0.15f : 0f; spawnFrom = p.transform.position;
-            Sounds.Tear(p.transform.position, hull.removed.Count);
+            // (as loud as how much skin goes, by its area: see Sounds.Tear)
+            float area = 0f;
+            for (int k = 0; k < hull.removed.Count; k++)
+            {
+                int ci = hull.removed[k].Key;
+                if (hull.plan != null && ci >= 0 && ci < hull.plan.cells.Length) area += hull.plan.cells[ci].area;
+            }
+            Sounds.Tear(p.transform.position, area);
             Spawn(w, h, hull);
             spawnHeat = 0f; spawnBurning = 0f;
         }
@@ -1476,8 +1750,11 @@ namespace Fragmentation
                 {
                     TornAway++;
                     Note(Name(h) + " is torn away from " + (p.parent.partInfo != null ? p.parent.partInfo.title : "the part it hung from"));
-                    Sounds.Tear(p.transform.position, 8f);
+                    // (the skin round the join torn through: a quarter of the part's skin, at most 3 m², about eight panels of a
+                    // full-size tank, as loud as a tear gets nearly; a small part's less)
+                    Sounds.Tear(p.transform.position, hull.plan != null ? Mathf.Min(3f, 0.25f * hull.plan.area) : 3f);
                     long td = Prof.Now;
+                    Parting(p);
                     try { p.decouple(); } catch (Exception ex) { Note("could not part " + Name(h) + ": " + ex.Message); }
                     Prof.Add(Prof.Dies, td);
                 }
@@ -1491,8 +1768,65 @@ namespace Fragmentation
                 TornAway++;
                 Note((child.partInfo != null ? child.partInfo.title : "a part") + " is torn away from " + Name(h));
                 long td = Prof.Now;
+                Parting(child);
                 try { child.decouple(); } catch (Exception ex) { Note("could not part them: " + ex.Message); }
                 Prof.Add(Prof.Dies, td);
+            }
+        }
+
+        // ---- a part torn away is not flung. When a part is let go from the one it was joined to, the two may still overlap where
+        // they met (a duct, a strut or a small part tucked into a tank), and the physics pushes them apart at once, as hard as it
+        // takes to clear the overlap in a step: seen 2026-11-03, a 50 kg fuel duct torn from a tank in a slide at 50 m/s going
+        // 230 m/s the next step, before anything had struck it. Nothing in a crash throws a part so; the skin's own tearing gives
+        // it a few metres a second. So for a few steps after it is let go, a part's speed (over the ground, the game's moving frame
+        // put back) is held within PartedMost of what it had as it went, and its turning within PartedSpin; what a blast or a blow
+        // gives it in those steps up to that is kept.
+        public static float PartedMost = 25f, PartedSpin = 25f;
+        const int PartedSteps = 4;
+        static readonly Part[] parted = new Part[32];
+        static readonly Vector3[] partedWas = new Vector3[32];
+        static readonly int[] partedLeft = new int[32];
+        static int partedCount;
+#if DEV
+        internal static int PartedHeld;
+        internal static float PartedWorst;
+#endif
+
+        static void Parting(Part p)
+        {
+            if (p == null || p.rb == null || partedCount >= parted.Length) return;
+            parted[partedCount] = p;
+            partedWas[partedCount] = p.rb.velocity + (Vector3)Krakensbane.GetFrameVelocity();
+            partedLeft[partedCount] = PartedSteps;
+            partedCount++;
+        }
+
+        /// <summary>(every step) the parts let go of lately held to the speed they went with, give or take PartedMost.</summary>
+        static void HoldParted()
+        {
+            if (partedCount == 0) return;
+            Vector3 frame = (Vector3)Krakensbane.GetFrameVelocity();
+            for (int k = partedCount - 1; k >= 0; k--)
+            {
+                Part p = parted[k];
+                if (p != null && p.rb != null && !p.packed)
+                {
+                    Vector3 now = p.rb.velocity + frame, gained = now - partedWas[k];
+                    if (gained.sqrMagnitude > PartedMost * PartedMost)
+                    {
+                        p.rb.velocity = partedWas[k] + gained.normalized * PartedMost - frame;
+#if DEV
+                        PartedHeld++;
+                        PartedWorst = Mathf.Max(PartedWorst, gained.magnitude);
+                        Note((p.partInfo != null ? p.partInfo.title : "a part") + " let go would have been flung " + gained.magnitude.ToString("F0") + " m/s: held to " + PartedMost.ToString("F0"));
+#endif
+                    }
+                    if (p.rb.angularVelocity.sqrMagnitude > PartedSpin * PartedSpin) p.rb.angularVelocity = p.rb.angularVelocity.normalized * PartedSpin;
+                    if (--partedLeft[k] > 0) continue;
+                }
+                partedCount--;
+                parted[k] = parted[partedCount]; partedWas[k] = partedWas[partedCount]; partedLeft[k] = partedLeft[partedCount];
+                parted[partedCount] = null;
             }
         }
 
@@ -1533,6 +1867,95 @@ namespace Fragmentation
                 yz.positionSpring = spring; yz.positionDamper = spring * 0.04f;
                 j.angularXDrive = x; j.angularYZDrive = yz;
             }
+        }
+
+        // ---- what is in a tank decides how it goes up (see GoUp, BreakNow and StartLeak)
+        //
+        // The pieces of a burst tank leave at about the square root of twice the energy that goes into their motion over the casing's mass,
+        // and that energy goes with what was in it, a kilogram of it at a time. Fuel and oxidiser sprayed together and lit go off: the Project
+        // PYRO tests of the 1960s, rocket stages dropped and burst on purpose, found a few per cent of TNT's 4.6 MJ a kilogram, some hundred
+        // kilojoules a kilogram of propellant, of which about half a per cent drives the casing (500 J a kilogram), so that a full tank,
+        // some eight times its dry mass in propellant, throws its petals out at about 90 m/s, within the 20 to 150 m/s fragments of burst
+        // vessels and stages are found at. Monopropellant decomposing all at once does about half that; solid propellant broken up burns
+        // more than it goes off, a fifth; and fuel with no oxidiser of its own, an aeroplane's kerosene, does not go off at all: it burns as a
+        // ball of fire whose push is little more than the gas it heats, a tenth (the wing tanks of airliners that burn after a crash leave
+        // the skin about them and their wreckage lying close by).
+        public static float BurstBiprop = 500f, BurstMono = 250f, BurstSolid = 100f, BurstFuel = 50f;
+        // (and the speed held between these, metres a second: a few kilograms in a big tank still blow its torn skin off, and nothing a
+        // burst throws goes faster than the fastest fragments found of burst vessels)
+        public static float BurstLeast = 12f, BurstMost = 150f;
+        // Fuel alone going up leaves at least this share of the skin it had, and its blast pushes the pieces about it by this share of a
+        // propellant burst's and the craft by this share: a fireball, not an explosion.
+        public static float FuelLeave = 0.85f, FuelBlast = 0.2f, FuelShove = 0.3f;
+        // Whether a split tank in air catches: less often in a slow crash than a fast one. Fires after aeroplane crashes come in some 15 to 30
+        // per cent of those that are survivable, at the speeds of a landing gone wrong, and in nearly all of those at the speed of flight, when
+        // the fuel is thrown out as a mist (the FAA's and the NTSB's surveys of post-crash fire). So: this share at CatchSlow m/s and below,
+        // rising smoothly by CatchRise more to CatchFast m/s and above, and never more than CatchMost.
+        public static float CatchBase = 0.3f, CatchRise = 0.8f, CatchSlow = 12f, CatchFast = 50f, CatchMost = 0.97f;
+        // (off: every tank goes up as it used to, whatever is in it, and catches three times in four, for comparing)
+        public static bool BurstByPropellant = true;
+        // (what is in a tank, for how it goes up)
+        const int FuelOnly = 0, Biprop = 1, Monoprop = 2, SolidProp = 3;
+        internal static readonly string[] ContentsSaid = { "fuel alone", "fuel and oxidiser", "monopropellant", "solid propellant" };
+#if DEV
+        // (development build, see Tests.Burst: the last burst, and the leaks since last cleared, by how hard their tank was struck: under 20,
+        // 20 to 50 and over 50 m/s, how many began in air and how many of those caught, and how many were hypergolic)
+        internal static string BurstPart = "";
+        internal static int BurstContents = -1, BurstFirstId, BurstLastId;
+        internal static float BurstFuelKg, BurstDryKg, BurstEnergy, BurstSpeed, BurstLeaveShare, BurstPush, BurstShove, BurstFrameKick, BurstWhen;
+        internal static CelestialBody BurstBody;
+        internal static double BurstLat, BurstLon, BurstAlt;
+        internal static readonly int[] LeaksInAir = new int[3], LeaksLit = new int[3];
+        internal static int LeaksHypergolic, LeaksCrushed, LeaksNoAir, LeaksNoAirLit;
+#endif
+
+        /// <summary>What is in a tank, for how it goes up: fuel and oxidiser, monopropellant, solid propellant, or fuel alone.</summary>
+        static int Contents(Part p, double fuel)
+        {
+            if (Oxidiser(p) > 1.0) return Biprop;
+            if (Propellant(p, true) > fuel * 0.5) return SolidProp;
+            if (Mono(p) > Math.Max(1.0, fuel) * 0.5) return Monoprop;
+            return FuelOnly;
+        }
+
+        /// <summary>The energy a kilogram of what is in a tank gives its pieces' motion as it goes up (joules; see BurstBiprop).</summary>
+        static float BurstEnergyOf(int contents) => contents == Biprop ? BurstBiprop : contents == Monoprop ? BurstMono : contents == SolidProp ? BurstSolid : BurstFuel;
+
+        /// <summary>
+        /// How fast a tank going up throws its pieces out: the square root of twice the energy its propellant gives their motion over its own
+        /// dry mass as built (kilograms both), held between BurstLeast and BurstMost.
+        /// </summary>
+        static float BurstSpeedOf(Hits h, int contents, double fuelKg)
+        {
+            float dry = Mathf.Max(1f, FullMass(h) * 1000f);
+            return Mathf.Clamp(Mathf.Sqrt(2f * BurstEnergyOf(contents) * (float)fuelKg / dry), BurstLeast, Mathf.Max(BurstLeast, BurstMost));
+        }
+
+        /// <summary>
+        /// Whether a tank's fuel and oxidiser light each other as they meet: nitrogen tetroxide with any of the hydrazines (MMH, UDMH,
+        /// Aerozine 50, hydrazine itself) catches within milliseconds, without a spark or any air. By the resources' names, so that a mod
+        /// that adds them needs nothing of this one.
+        /// </summary>
+        static bool Hypergolic(Part p)
+        {
+            if (p == null || p.Resources == null) return false;
+            bool nto = false, hydrazine = false;
+            for (int i = 0; i < p.Resources.Count; i++)
+            {
+                PartResource r = p.Resources[i];
+                if (r == null || r.amount <= 0) continue;
+                string name = r.resourceName;
+                if (name == "NTO") nto = true;
+                else if (name == "MMH" || name == "UDMH" || name == "Aerozine50" || name.IndexOf("Hydrazine", StringComparison.OrdinalIgnoreCase) >= 0) hydrazine = true;
+            }
+            return nto && hydrazine;
+        }
+
+        /// <summary>The chance a split tank in air catches, by how hard it was struck (see CatchBase): the smooth step of the speed between CatchSlow and CatchFast.</summary>
+        internal static float Catch(float hardest)
+        {
+            float x = Mathf.Clamp01((hardest - CatchSlow) / Mathf.Max(0.1f, CatchFast - CatchSlow));
+            return Mathf.Min(CatchMost, CatchBase + CatchRise * x * x * (3f - 2f * x));
         }
 
         static double Oxidiser(Part p)
@@ -1608,13 +2031,19 @@ namespace Fragmentation
             CelestialBody body = p.vessel != null ? p.vessel.mainBody : null;
             bool oxygen = body != null && body.atmosphere && body.atmosphereContainsOxygen && p.vessel.staticPressurekPa > 5.0;
             bool oxidiser = Oxidiser(p) > 1.0;
-            // Whether it catches. In air there is everything it needs, and a crash makes sparks and hot metal enough, most times; not always
-            // (a Boeing 777 that came down short at Heathrow in 2008 tore a tank open and nothing caught). Where there is no oxygen to burn in,
-            // only a tank with its own oxidiser burns, and then it does: fuel and oxidiser sprayed together off torn metal.
-            leak.lit = oxygen ? Random.value < 0.75f : oxidiser;
+            // Whether it catches. In air there is everything it needs, and a crash makes sparks and hot metal enough, more often the harder
+            // it was: a slow crash spills its fuel as a pool that a spark may or may not find (a Boeing 777 that came down short at Heathrow
+            // in 2008 tore a tank open and nothing caught), a fast one throws it out as a mist through hot, torn metal, and that nearly always
+            // catches (see CatchBase). Where there is no oxygen to burn in, only a tank with its own oxidiser burns, and then it does: fuel and
+            // oxidiser sprayed together off torn metal.
+            leak.lit = oxygen ? Random.value < (BurstByPropellant ? Catch(h.hardest) : 0.75f) : oxidiser;
             // Crushed right through, a full tank does not leak for a moment: it bursts, and what comes out catches at once, as at the Boeing 720's
             // tenth of a second (a rocket driven straight into the ground goes up as it hits).
             if (h.crushed >= 1f && (oxygen || oxidiser)) { leak.lit = oxygen ? Random.value < 0.95f : true; leak.until = now + Random.Range(0.03f, 0.12f); }
+            // Fuel and oxidiser that light each other (see Hypergolic) catch the moment they meet, in air or not, a hundredth of a second or
+            // so after the tank splits: there is no leaking first.
+            bool hypergolic = BurstByPropellant && Hypergolic(p);
+            if (hypergolic) { leak.lit = true; leak.until = now + Random.Range(0.01f, 0.05f); }
             // What is in it decides how it looks: solid propellant does not run out, it burns through the split, white; monopropellant burns pale and clean.
             double solid = Propellant(p, true), all = Math.Max(1.0, leak.had);
             if (solid > all * 0.5) { leak.lit = true; leak.tint = 1; leak.shade = 0.8f; leak.warm = 0.05f; }
@@ -1622,7 +2051,14 @@ namespace Fragmentation
             // One that does not catch runs out for longer and does not go up: what is left in the tank is still there when it stops.
             if (!leak.lit) leak.until = now + Random.Range(5f, 9f);
             leaks.Add(leak);
-            Note(Name(h) + " split and is leaking (" + leak.had.ToString("F0") + " kg in it" + (leak.lit ? ", alight" : "") + ")");
+#if DEV
+            int fast = h.hardest < 20f ? 0 : h.hardest < 50f ? 1 : 2;
+            if (oxygen) { LeaksInAir[fast]++; if (leak.lit) LeaksLit[fast]++; }
+            else { LeaksNoAir++; if (leak.lit) LeaksNoAirLit++; }
+            if (hypergolic) LeaksHypergolic++;
+            if (h.crushed >= 1f) LeaksCrushed++;
+#endif
+            Note(Name(h) + " split and is leaking (" + leak.had.ToString("F0") + " kg in it" + (leak.lit ? (hypergolic ? ", alight at once (hypergolic)" : ", alight") : "") + ", struck at " + h.hardest.ToString("F0") + " m/s)");
         }
 
         /// <summary>
@@ -1714,6 +2150,11 @@ namespace Fragmentation
             double fuel = Propellant(p);
             Vector3 at = p.transform.TransformPoint(leak.local);
             float impact = Mathf.Max(h.hardest, w != null ? w.body.V.magnitude : 0f);
+            // What was in it, and so how fast it throws its pieces out (see BurstBiprop): worked out before what is in it is gone. A full
+            // tank of fuel and oxidiser, eight times its dry mass, throws them at some 90 m/s; the same of kerosene alone at under 30.
+            int contents = Contents(p, fuel);
+            bool fuelOnly = BurstByPropellant && contents == FuelOnly;
+            float burstSpeed = BurstByPropellant ? BurstSpeedOf(h, contents, fuel) : 0f;
             Burst++;
             long t = Prof.Now;
             try
@@ -1741,13 +2182,16 @@ namespace Fragmentation
             float leave = Mathf.Clamp(0.62f - 0.11f * Mathf.Log10(1f + (float)fuel / 20f), 0.2f, 0.62f);
             // (and the harder it was crushed first, the less: a tank driven straight into the ground leaves next to nothing)
             leave *= 1f - 0.8f * Mathf.Clamp01((h.crushed - 0.4f) / 0.8f);
+            // (fuel alone burns, it does not go off: the skin about the split is scorched and bent, and most of it stays on)
+            if (fuelOnly) leave = Mathf.Max(leave, FuelLeave);
             leave = Mathf.Min(leave, hull.Left);
             t = Prof.Now;
             hull.BlowOff(at, leave, up);
             // (half the time a torn tank's far end comes away as one: its first crack runs along it and then round it, and the end, a dome and a
             // length of shell, is driven off along the tank's axis by what escapes, as burst pressure vessels' end caps are: see the Research page)
+            // (not by fuel alone burning: there is no pressure behind the end to drive it off)
             Vector3 axisWorld = Vector3.zero;
-            if (Random.value < 0.5f && Frames.Round(hull.plan, out float tankRadius, out float tankLength))
+            if (!fuelOnly && Random.value < 0.5f && Frames.Round(hull.plan, out float tankRadius, out float tankLength))
             {
                 Vector3 axis = p.transform.up;
                 float side = Vector3.Dot(at - p.transform.TransformPoint(hull.plan.mid), axis) >= 0f ? -1f : 1f;      // the end away from the tear
@@ -1755,14 +2199,20 @@ namespace Fragmentation
             }
             hull.CutLoose();
             Prof.Add(Prof.BlowOff, t);
-            spawnCutKick = axisWorld * Random.Range(6f, 16f);
-            spawnHeat = 1f; spawnBurning = solid ? 0.85f : 0.55f; spawnFrom = at;
+            // (the end cap goes off along the axis at a third to three fifths of the petals' speed: it is heavier, and driven by the gas
+            // behind it rather than torn off in it)
+            spawnCutKick = axisWorld * (BurstByPropellant ? burstSpeed * Random.Range(0.35f, 0.6f) : Random.Range(6f, 16f));
+            spawnHeat = 1f; spawnBurning = solid ? 0.85f : 0.55f; spawnFrom = at; spawnBurstSpeed = burstSpeed;
+            // (the pieces made from here on are this burst's: already thrown by it, they are not pushed by its blast again, below)
+            int before = Piece.LastId;
             Spawn(w, h, hull);
-            spawnHeat = 0f; spawnBurning = 0f; spawnCutKick = Vector3.zero;
+            spawnHeat = 0f; spawnBurning = 0f; spawnCutKick = Vector3.zero; spawnBurstSpeed = 0f;
             float fire = (float)fuel * 0.9f;
             float R = 1.75f * Mathf.Pow(Mathf.Max(1f, fire), 0.29f);
-            Piece.Blast(at, R * 2.2f, Mathf.Min(30f, 5f + 3f * Mathf.Sqrt(fire / 100f)));
-            ShoveCraft(at, R * 1.5f, Mathf.Min(2f, 0.4f + 0.2f * Mathf.Sqrt(fire / 200f)), p.vessel);
+            float push = Mathf.Min(30f, 5f + 3f * Mathf.Sqrt(fire / 100f)) * (fuelOnly ? FuelBlast : 1f);
+            float shove = Mathf.Min(2f, 0.4f + 0.2f * Mathf.Sqrt(fire / 200f)) * (fuelOnly ? FuelShove : 1f);
+            Piece.Blast(at, R * 2.2f, push, BurstByPropellant ? before : int.MaxValue);
+            ShoveCraft(at, R * 1.5f, shove, p.vessel);
             Blasted(at, Mathf.Max(25f, R * 2.2f));
             // The wreck burns on where it went up, and goes on burning as it slides: what spilled is alight in the torn structure.
             if (w != null)
@@ -1778,7 +2228,19 @@ namespace Fragmentation
             // no one frame has it all to do)
             HullPlan plan = hull.plan;
             Vector3 local = p.transform.InverseTransformPoint(at);
-            float kick = Mathf.Min(18f, 6f + 2f * Mathf.Sqrt((float)fuel / 100f));
+            // (thrown out with the petals, a little slower: torn out of the skin they held, they are let go of last)
+            float kick = BurstByPropellant ? burstSpeed * 0.65f : Mathf.Min(18f, 6f + 2f * Mathf.Sqrt((float)fuel / 100f));
+#if DEV
+            BurstPart = Name(h); BurstContents = contents; BurstFuelKg = (float)fuel; BurstDryKg = FullMass(h) * 1000f; BurstEnergy = BurstEnergyOf(contents);
+            BurstSpeed = burstSpeed; BurstLeaveShare = leave; BurstPush = push; BurstShove = shove; BurstFrameKick = kick; BurstWhen = Time.time;
+            BurstFirstId = before; BurstLastId = Piece.LastId;
+            if (p.vessel != null && p.vessel.mainBody != null)
+            {
+                BurstBody = p.vessel.mainBody;
+                BurstLat = BurstBody.GetLatitude(at); BurstLon = BurstBody.GetLongitude(at); BurstAlt = BurstBody.GetAltitude(at);
+            }
+            else BurstBody = null;
+#endif
             Later(() =>
             {
                 if (p == null || p.State == PartStates.DEAD) return;
@@ -1788,7 +2250,8 @@ namespace Fragmentation
                 Prof.Add(Prof.Frames, t2);
             });
             h.sever = true;
-            Note(Name(h) + " went up (" + fuel.ToString("F0") + " kg), " + (hull.Left * 100f).ToString("F0") + "% of its skin left");
+            Note(Name(h) + " went up (" + fuel.ToString("F0") + " kg), " + (hull.Left * 100f).ToString("F0") + "% of its skin left" +
+                 (BurstByPropellant ? "; " + ContentsSaid[contents] + ", its pieces thrown at " + burstSpeed.ToString("F0") + " m/s" : ""));
             // (since 0.5.0: a crewed cabin whose own propellant has gone up in it goes to pieces, and its crew with it)
             if (Crewed(p)) { h.why = "its own propellant going up in it"; h.burst = true; Break(w, h, false); }
             else if (hull.Left < 0.15f) Break(w, h, false);
@@ -1848,6 +2311,8 @@ namespace Fragmentation
             // Solid propellant broken up burns, it does not go off: the boosters of Challenger flew on out of the fireball (see the
             // Research page). So most of it is not in the blast; it goes with the pieces, burning.
             bool solid = burns && Propellant(p, true) > fuel * 0.5;
+            // (and fuel with no oxidiser of its own burns as a ball of fire, without the blast of fuel and oxidiser going off together: see FuelBlast)
+            bool fuelOnly = BurstByPropellant && burns && Contents(p, fuel) == FuelOnly;
             if (solid && p.Resources != null)
             {
                 foreach (PartResource r in p.Resources)
@@ -1921,8 +2386,8 @@ namespace Fragmentation
             {
                 float fire = (float)fuel * 0.9f;
                 float R = 1.75f * Mathf.Pow(Mathf.Max(1f, fire), 0.29f);
-                Piece.Blast(at, R * 2.2f, Mathf.Min(30f, 5f + 3f * Mathf.Sqrt(fire / 100f)));
-                ShoveCraft(at, R * 1.5f, Mathf.Min(2f, 0.4f + 0.2f * Mathf.Sqrt(fire / 200f)), p.vessel);
+                Piece.Blast(at, R * 2.2f, Mathf.Min(30f, 5f + 3f * Mathf.Sqrt(fire / 100f)) * (fuelOnly ? FuelBlast : 1f));
+                ShoveCraft(at, R * 1.5f, Mathf.Min(2f, 0.4f + 0.2f * Mathf.Sqrt(fire / 200f)) * (fuelOnly ? FuelShove : 1f), p.vessel);
                 Blasted(at, Mathf.Max(25f, R * 2.2f));
                 if (w != null)
                 {

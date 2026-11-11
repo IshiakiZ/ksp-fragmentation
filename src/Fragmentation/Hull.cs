@@ -61,6 +61,10 @@ namespace Fragmentation
         float shapeDue;
         Vector3 biteWay;
         float bite;
+        // ---- the game's guard against a part going through the ground, told how far this part's middle lies outside its hull (see Guard)
+        float guardDue;
+        /// <summary>The least move a step the game's guard was told for this part, squared (0: left as the game has it, 0.1 m).</summary>
+        public float GuardSq { get; private set; }
 
         // ---- the skin as last drawn, in the part's axes (each corner of each triangle)
         Vector3[] pos, nrm;
@@ -77,6 +81,14 @@ namespace Fragmentation
         MaterialPropertyBlock block;
 
         public float Left => plan != null && plan.area > 0f ? leftArea / plan.area : 1f;
+
+        /// <summary>
+        /// The part's own mass as it was built, before this mod lowered it for the skin torn away (see where the mass is set after each
+        /// redrawing). Its strength is reckoned by this, not by what is left: what is left of a part is a share of its strength, kept
+        /// as the share it has been crushed (Hits.crushed), and reckoning that share of a strength already lowered for the same loss
+        /// counted the loss twice, so that a part being ground along weakened faster with every redrawing.
+        /// </summary>
+        public float FullMass => prefabMass >= 0f ? prefabMass : part != null ? part.prefabMass : 0f;
 
         /// <summary>For the development build's readouts: how deep it has been ground away from below, and crushed in, at most (metres).</summary>
         public string Damage()
@@ -620,6 +632,10 @@ namespace Fragmentation
         void Update()
         {
             if (plan == null || part == null) return;
+            // (the guard is made afresh whenever the part comes off the rails, and forgets what it was told)
+            if (GuardSq > 0f && part.collisionEnhancer != null && part.collisionEnhancer.instanceMinDistSqr != GuardSq) part.collisionEnhancer.instanceMinDistSqr = GuardSq;
+            // (and measured again five times a second: the hull is set into the ground by its bite, and made again as panels come off)
+            if (boxed && Time.unscaledTime >= guardDue) { guardDue = Time.unscaledTime + 0.2f; Guard(); }
             if (wantBox && !boxed)
             {
                 if (Time.frameCount != boxFrame) { boxFrame = Time.frameCount; boxesNow = 0; }
@@ -731,6 +747,44 @@ namespace Fragmentation
                 bc.size = Vector3.Max(hi - lo, Vector3.one * 0.1f);
             }
             boxObject.transform.localPosition = bite > 0.01f ? -biteWay * bite : Vector3.zero;
+            Guard();
+        }
+
+        /// <summary>
+        /// (Since 2026-11-10) The game's guard against a fast part going clean through the ground between two steps (CollisionEnhancer) goes by
+        /// the part's middle: when that has moved more than 0.1 m in a step and the line from where it was to where it is crosses the ground,
+        /// the part is put 0.25 m above the crossing and sent back at a fifth of its speed. The hull that stands in for a torn part's
+        /// colliders here (round what is left of its skin, set into soft ground by its bite) can leave the middle outside it: a nose cone's
+        /// 0.18 m under it. Lying on the ground such a part has its middle under the ground's surface, and a move of more than 0.1 m a step
+        /// that crossed the surface was taken for going through: after a crash by the pad on 2026-11-10 one nose cone was put back on top 18
+        /// times in ten seconds, at 7 to 9 m/s (the owner: "everything is glitching and teleporting up and down rapidly"). So for such a part
+        /// the guard is told its own least move a step, the game's 0.1 m and as far as the middle can lie outside the hull, at most 0.6 m
+        /// (30 m/s at the game's 50 steps a second: a part falling fast is still caught). A part whose middle lies within its hull is left to
+        /// the game's own 0.1 m. The guard is made afresh when the part comes off the rails, so it is told again then (Update); and left as
+        /// the game had it when this goes.
+        /// </summary>
+        void Guard()
+        {
+            // (the middle is as far outside the hull as the hull's nearest point to it is from it; nought within it)
+            float outside = 0f;
+            if (box != null && box.enabled && anyLeft && part != null)
+            {
+                Vector3 o = part.transform.position;
+                try { outside = (box.ClosestPoint(o) - o).magnitude; } catch (Exception) { outside = 0f; }
+            }
+            float want = outside > 0.02f ? Mathf.Min(0.6f, 0.1f + outside) : 0f;
+            want *= want;
+            CollisionEnhancer guard = part != null ? part.collisionEnhancer : null;
+            if (guard != null)
+            {
+                if (want > 0f) guard.instanceMinDistSqr = want;
+                else if (GuardSq > 0f && guard.instanceMinDistSqr == GuardSq) guard.instanceMinDistSqr = 0f;
+            }
+#if DEV
+            if (want > 0f && Mathf.Abs(want - GuardSq) > 0.01f)
+                Crashes.Note((part.partInfo != null ? part.partInfo.title : part.name) + "'s middle " + outside.ToString("F2") + " m outside its hull: the game's guard told " + Mathf.Sqrt(want).ToString("F2") + " m a step");
+#endif
+            GuardSq = want;
         }
 
         bool shapeStale = true;
@@ -1291,6 +1345,7 @@ namespace Fragmentation
 
         void OnDestroy()
         {
+            if (GuardSq > 0f && part != null && part.collisionEnhancer != null && part.collisionEnhancer.instanceMinDistSqr == GuardSq) part.collisionEnhancer.instanceMinDistSqr = 0f;
             if (drawnObject != null) Destroy(drawnObject);
             if (boxObject != null) Destroy(boxObject);
             if (mesh != null) Destroy(mesh);

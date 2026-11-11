@@ -13,6 +13,17 @@ namespace Fragmentation
     {
         static Material metal;
 
+        // What a metre of ring and of stringer weighs, kilograms: a tank's ring frame is a light-alloy channel some 8 cm deep and 2 mm thick,
+        // about 3 square centimetres of section with its flanges, 0.8 kg a metre at aluminium's 2700 kg a cubic metre; a stringer a hat
+        // section of about 1.1 square centimetres, 0.3 kg a metre. (They were 12 kg a metre of radius whatever the arc, some ten times too heavy, and lay on the
+        // ground as if they were steel.)
+        public static float RingKg = 0.8f, BarKg = 0.3f;
+#if DEV
+        // (development build, see Tests.Burst: the rings and stringers thrown since last cleared, and what they weighed, kilograms)
+        internal static int RingsThrown, BarsThrown;
+        internal static float RingKgSum, RingKgMost, BarKgSum, BarKgMost;
+#endif
+
         /// <summary>Whether a part's skin is round about its own long axis (the game's parts stand along their second axis), and how big round.</summary>
         public static bool Round(HullPlan plan, out float radius, out float length)
         {
@@ -34,16 +45,30 @@ namespace Fragmentation
                 if (Piece.Count >= Piece.Most) return;
                 bool ring = k < rings;
                 // (torn out of a skin that tore: a ring breaks where the skin round it did, into arcs, bent and twisted out of its plane)
-                Mesh mesh = ring ? Arc(radius * Random.Range(0.97f, 1.0f), Random.Range(30f, 120f), section, section * 0.35f, Random.Range(0.2f, 0.7f))
-                                 : Bar(Mathf.Min(length, Random.Range(0.4f, 1.3f) * radius * 1.4f), section * 0.5f, Random.Range(-35f, 35f), Random.Range(-15f, 15f));
+                float degrees = Random.Range(30f, 120f), barLength = Mathf.Min(length, Random.Range(0.4f, 1.3f) * radius * 1.4f);
+                Mesh mesh = ring ? Arc(radius * Random.Range(0.97f, 1.0f), degrees, section, section * 0.35f, Random.Range(0.2f, 0.7f))
+                                 : Bar(barLength, section * 0.5f, Random.Range(-35f, 35f), Random.Range(-15f, 15f));
                 var mats = new[] { metal };
                 // (bare aluminium, blackened in places by the fire, not all over)
                 float k2 = Mathf.Lerp(1f, 0.45f, soot * Random.Range(0.4f, 1f));
                 var tints = new[] { new Color(0.86f * k2, 0.86f * k2, 0.84f * k2, 1f) };
+                // (thrown out from the tank's axis, as the skin round them is: a stage going up throws its rings and stringers out in a
+                // wide sheet about it, not along it)
                 Vector3 out_ = Random.onUnitSphere;
+                if (Crashes.BurstByPropellant)
+                {
+                    Vector3 flat = Vector3.ProjectOnPlane(out_, partTurn * Vector3.up);
+                    if (flat.sqrMagnitude > 1e-4f) out_ = flat.normalized;
+                }
                 Vector3 place = at + out_ * radius * 0.5f;
                 Quaternion turn = partTurn * Random.rotation;
-                float mass = Mathf.Max(0.003f, (ring ? 0.012f : 0.006f) * radius);
+                // (and as heavy as such a length of light-alloy channel is: see RingKg; never under 3 kg, which the physics holds steady)
+                float mass = Crashes.BurstByPropellant ? Mathf.Max(0.003f, ring ? RingKg * 0.001f * radius * degrees * Mathf.Deg2Rad : BarKg * 0.001f * barLength)
+                                                      : Mathf.Max(0.003f, (ring ? 0.012f : 0.006f) * radius);
+#if DEV
+                if (ring) { RingsThrown++; RingKgSum += mass * 1000f; RingKgMost = Mathf.Max(RingKgMost, mass * 1000f); }
+                else { BarsThrown++; BarKgSum += mass * 1000f; BarKgMost = Mathf.Max(BarKgMost, mass * 1000f); }
+#endif
                 Piece p = Piece.Make(mesh, mats, tints, place, turn, v + out_ * kick * Random.Range(0.4f, 1f), Random.onUnitSphere * Random.Range(2f, 8f), mass, mesh.bounds.size.x * section * 2f, soot > 0.3f ? 0.3f : 0f, 0f, 0, false, from);
                 p.smoke = soot > 0.3f ? Random.Range(0.2f, 0.4f) : 0.06f;
                 p.smokeUntil = Time.time + (soot > 0.3f ? Random.Range(6f, 12f) : 3f);
