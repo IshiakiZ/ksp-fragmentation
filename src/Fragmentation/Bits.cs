@@ -14,7 +14,13 @@ namespace Fragmentation
     public static class Bits
     {
         public enum Kind { Metal, Paint, Burnt, Foil, Bolt, Clod, Turf }
-        const int Kinds = 7, Most = 900;
+        // (and after them, since 2026-11-19, a few kinds of shred of skin each in the colour of a paint torn now, see Skin: SkinFirst on)
+        const int SkinFirst = 7, Skins = 6;
+        internal const int Kinds = SkinFirst + Skins, Most = 900;
+        public static float TestPaint;                 // (development build: 1, every shred of skin the one grey and the kinds thrown as until 2026-11-19, see Skin)
+        static readonly Color[] skinColour = new Color[Skins];
+        static readonly bool[] skinUsed = new bool[Skins], skinHeld = new bool[Skins];
+        static readonly Material[] skinMats = new Material[Skins];
 
         // (mu: how hard the ground it lands on holds it back, its friction there, -1 for its kind's own; felt: the real ground under it
         // has been looked for since it first touched (or, see FirstTouch, found where it was to come down); sure: and again where it came
@@ -251,7 +257,58 @@ namespace Fragmentation
         }
 
         /// <summary>Whether a kind is a thin sheet (a shred of skin, of paint, burnt, or foil), that comes to rest lying flat; bolts and clods keep the way they fell.</summary>
-        static bool Flat(byte kind) => kind <= (byte)Kind.Foil;
+        static bool Flat(byte kind) => kind <= (byte)Kind.Foil || kind >= SkinFirst;
+
+        /// <summary>For the development build's readouts: the paints the kinds of shred of skin are in now, and how many of each are about.</summary>
+        internal static string SaySkins()
+        {
+            var say = new System.Text.StringBuilder("shreds of paint:");
+            for (int k = 0; k < Skins; k++)
+            {
+                if (!skinUsed[k]) continue;
+                int n = 0;
+                for (int i = 0; i < count; i++) if (all[i].kind == SkinFirst + k) n++;
+                say.Append(' ').Append(n).Append(" in ").Append(skinColour[k].r.ToString("F2")).Append(',').Append(skinColour[k].g.ToString("F2")).Append(',').Append(skinColour[k].b.ToString("F2")).Append(';');
+            }
+            int grey = 0;
+            for (int i = 0; i < count; i++) if (all[i].kind == (byte)Kind.Paint) grey++;
+            return say.Append(' ').Append(grey).Append(" in the old grey").ToString();
+        }
+
+        /// <summary>
+        /// (Since 2026-11-19.) The kind to throw a shred of skin of this colour as (see Hull.SkinAt): one of a few kinds kept for the
+        /// colours of the paint being torn, each drawn in its colour. A colour near one already in use takes its kind; another takes a
+        /// kind none of whose shreds are left; with none left, the nearest. A wreck's shreds are of a few paints, as its skin is.
+        /// </summary>
+        public static Kind Skin(Color c)
+        {
+            Ready();
+            int best = -1;
+            float near = float.MaxValue;
+            for (int k = 0; k < Skins; k++)
+            {
+                if (!skinUsed[k]) continue;
+                float dr = c.r - skinColour[k].r, dg = c.g - skinColour[k].g, db = c.b - skinColour[k].b, d = dr * dr + dg * dg + db * db;
+                if (d < near) { near = d; best = k; }
+            }
+            // (within some 0.06 a channel: the same paint, as near as anyone could tell apart shreds on the ground)
+            if (best >= 0 && near < 0.01f) return (Kind)(SkinFirst + best);
+            int free = Array.IndexOf(skinUsed, false);
+            if (free < 0)
+            {
+                // (every kind in use: those with no shreds left are let go)
+                for (int k = 0; k < Skins; k++) skinHeld[k] = false;
+                for (int i = 0; i < count; i++) { int s = all[i].kind - SkinFirst; if (s >= 0) skinHeld[s] = true; }
+                for (int k = 0; k < Skins; k++) if (!skinHeld[k]) { skinUsed[k] = false; if (free < 0) free = k; }
+            }
+            if (free < 0) return (Kind)(SkinFirst + best);
+            skinUsed[free] = true;
+            skinColour[free] = c;
+            // (the speckle the bits are drawn with darkens them by its mean, 0.9, see Speckle: made up for, so that a shred of white
+            // paint is on average as light as the paint, and matte, as the parts' own are without their sheen)
+            if (skinMats[free] != null) skinMats[free].color = new Color(c.r / SpeckleMean, c.g / SpeckleMean, c.b / SpeckleMean, 1f);
+            return (Kind)(SkinFirst + free);
+        }
         static ParticleSystem[] systems;
         static ParticleSystem.Particle[][] buffers;
         static int[] shown;
@@ -894,6 +951,13 @@ namespace Fragmentation
             Make(Kind.Bolt, bolt, new Color(0.34f, 0.34f, 0.34f), 0.1f);
             Make(Kind.Clod, clod, soil, 0f);
             Make(Kind.Turf, sod, Color.white, 0f);
+            // (the shreds of skin in the colours of the paint torn: see Skin)
+            for (int k = 0; k < Skins; k++)
+            {
+                Make((Kind)(SkinFirst + k), shard, Color.white, 0f);
+                skinMats[k] = systems[SkinFirst + k].GetComponent<ParticleSystemRenderer>().sharedMaterial;
+                skinUsed[k] = false;
+            }
             // (a slab of turf: grass on top, earth on its sides and underneath; its mesh picks which by where its faces look)
             systems[(int)Kind.Turf].GetComponent<ParticleSystemRenderer>().sharedMaterial.mainTexture = TurfTexture();
         }
@@ -966,6 +1030,8 @@ namespace Fragmentation
         }
 
         static Texture2D speckle;
+        /// <summary>The speckle's mean lightness (its texels from 0.8 to 1).</summary>
+        const float SpeckleMean = 0.9f;
         static Texture2D Speckle()
         {
             if (speckle != null) return speckle;

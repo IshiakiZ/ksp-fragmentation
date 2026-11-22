@@ -200,7 +200,7 @@ namespace Fragmentation
             " grindsoil=" + F(Crashes.GrindSoil) + " grindpaved=" + F(Crashes.GrindPaved) + " skin=" + F(Crashes.SkinShare) + " steel=" + F(Crashes.FrictionSteel) + " gougesteel=" + F(Crashes.GougeSteel) +
             " catch=" + F(Crashes.CatchPaved) + " wearpaved=" + F(Crashes.WearPaved) + " wearsoil=" + F(Crashes.WearSoil) + " vault=" + F(Crashes.Vault) + " hold=" + (Crashes.HoldWrecks ? 1 : 0) + " rolls=" + (Crashes.BrakeRolling ? 1 : 0) + " strikes=" + (Crashes.GripStrikes ? 1 : 0) +
             " hops=" + (Crashes.BridgeHops ? 1 : 0) + " spinlost=" + F(Crashes.SpinLost) + " rollplough=" + F(Crashes.RollPlough) + " lawn=" + (Crashes.TellLawn ? 1 : 0) + " ground=" + Crashes.TestGround +
-            " shadows=" + F(Piece.ShadowsFrom) + " bits=" + (Fragmentation.Bits.TestNone ? 0 : 1) + " modules=" + (Crashes.TestQuiet ? 0 : 1) + " most=" + Piece.MostOverride + " singular=" + F(Mat3.Singular) + " partedmost=" + F(Crashes.PartedMost) + " partedspin=" + F(Crashes.PartedSpin) +
+            " shadows=" + F(Piece.ShadowsFrom) + " bits=" + (Fragmentation.Bits.TestNone ? 0 : 1) + " bitpaint=" + F(Fragmentation.Bits.TestPaint) + " modules=" + (Crashes.TestQuiet ? 0 : 1) + " most=" + Piece.MostOverride + " singular=" + F(Mat3.Singular) + " partedmost=" + F(Crashes.PartedMost) + " partedspin=" + F(Crashes.PartedSpin) +
             " budget=" + (Crashes.EnergyBudget ? 1 : 0) + " latempty=" + F(Crashes.LatEmpty) + " latfull=" + F(Crashes.LatFull) + " sideleast=" + F(Crashes.SideLeast) +
             " louder=" + F(Sounds.LouderBy) + " inwindow=" + Sounds.InWindow + " hitcurve=" + F(Sounds.HitCurve) +
             " breakup=" + (Crashes.BreakUp ? 1 : 0) + " breakslow=" + F(Crashes.BreakSlow) + " breakfast=" + F(Crashes.BreakFast) + " burstbreak=" + F(Crashes.BurstBreak) +
@@ -271,6 +271,7 @@ namespace Fragmentation
             Crashes.TestGround = (int)Num(words, "ground", Crashes.TestGround);
             Piece.ShadowsFrom = Num(words, "shadows", Piece.ShadowsFrom);
             Fragmentation.Bits.TestNone = Num(words, "bits", Fragmentation.Bits.TestNone ? 0 : 1) < 0.5f;
+            Fragmentation.Bits.TestPaint = Num(words, "bitpaint", Fragmentation.Bits.TestPaint);
             Crashes.TestQuiet = Num(words, "modules", Crashes.TestQuiet ? 0 : 1) < 0.5f;
             Piece.MostOverride = (int)Num(words, "most", Piece.MostOverride);
             Mat3.Singular = Num(words, "singular", Mat3.Singular);
@@ -776,6 +777,17 @@ namespace Fragmentation
                     try { kind = (Fragmentation.Bits.Kind)Enum.Parse(typeof(Fragmentation.Bits.Kind), kindWord, true); }
                     catch (Exception) { return say + "no kind of bit called '" + kindWord + "'"; }
                 }
+                // ("paint=R/G/B", or "paint=L" for a grey: shreds of skin in that paint, as a crash throws them off a part
+                // whose texture has been read, see Hull.SkinAt and Bits.Skin)
+                string paintWord = Word(words, "paint");
+                if (paintWord.Length > 0)
+                {
+                    var ch = new float[3];
+                    string[] said = paintWord.Split('/');
+                    for (int c = 0; c < 3; c++)
+                        if (!float.TryParse(said[said.Length > 2 ? c : 0], NumberStyles.Float, CultureInfo.InvariantCulture, out ch[c])) return say + "no paint '" + paintWord + "'";
+                    kind = Fragmentation.Bits.Skin(new Color(ch[0], ch[1], ch[2], 1f));
+                }
                 bool earthen = kind == Fragmentation.Bits.Kind.Clod || kind == Fragmentation.Bits.Kind.Turf;
                 // (the ground there as a crash's bits would find it: paving but not the space centre's lawns, else the ground of the place)
                 bool paved = Crashes.Paved(hit.collider) && !(Crashes.TellLawn && Ground.Lawn(hit.point, up));
@@ -789,7 +801,8 @@ namespace Fragmentation
                 bitsAt = Time.time;
                 bitsG = ((Vector3)FlightGlobals.getGeeForceAtPosition(bitsFrom, body)).magnitude;
                 bitsFirst = Fragmentation.Bits.LastId + 1;
-                Fragmentation.Bits.Emit(bitsFrom, way * bitsSpeed, 0f, Mathf.Max(1, (int)Num(words, "n", 50f)), biggest * 0.15f, biggest, kind, 0f, 0f, 0f, grip);
+                // ("spread=M": each bit's speed spread by so much every way, metres a second; none, all go alike and lie in a heap)
+                Fragmentation.Bits.Emit(bitsFrom, way * bitsSpeed, Num(words, "spread", 0f), Mathf.Max(1, (int)Num(words, "n", 50f)), biggest * 0.15f, biggest, kind, 0f, 0f, 0f, grip);
                 bitsLast = Fragmentation.Bits.LastId;
                 bitsGrip = Fragmentation.Bits.DevLastGrip;
                 bitsGround = (paved ? "paving" : feel != null ? feel.Kind.ToString().ToLowerInvariant() : "?") + (bitsGrip >= 0f ? ", friction " + bitsGrip.ToString("F2") : ", its kind's own friction");
@@ -852,6 +865,8 @@ namespace Fragmentation
                 foreach (KeyValuePair<string, int> on in Fragmentation.Bits.DevDeepOn) { say.Append(firstOn ? " " : ", ").Append(on.Key).Append(' ').Append(on.Value); firstOn = false; }
                 foreach (string one in Fragmentation.Bits.DevDeepFirstFew) say.Append("\n  ").Append(one);
             }
+            // (and the parts' paint, read for the shreds of skin: see Paints, Bits.Skin)
+            say.Append("\n").Append(Paints.Say()).Append("; ").Append(Fragmentation.Bits.SaySkins());
             return say.ToString();
         }
 

@@ -214,7 +214,7 @@ namespace Fragmentation
             try { Feed.Warm(v.CoM + (Vector3)FlightGlobals.getUpAxis(v.mainBody, v.CoMD) * 300f); }
             catch (Exception) { yield break; }
             // (and this mod's own materials and textures made now, not at the first blow)
-            try { Hull.Inside(); Marks.Prepare(v.CoM); Bits.Prepare(); Sparks.Prepare(); Sounds.Prepare(); } catch (Exception ex) { Frag.Log("could not make ready: " + ex.Message); }
+            try { Hull.Inside(); Marks.Prepare(v.CoM); Bits.Prepare(); Sparks.Prepare(); Sounds.Prepare(); Paints.Warm(v); } catch (Exception ex) { Frag.Log("could not make ready: " + ex.Message); }
             // (and, near the space centre, its ground's masks: which of it is lawn and which tarmac, see Ground)
             try { Ground.Prepare(v.CoM); } catch (Exception ex) { Frag.Log("could not read the space centre's ground: " + ex.Message); }
             // (and the craft being flown armed once and let go again at once, its skin cut into panels on another thread as at any arming:
@@ -259,7 +259,7 @@ namespace Fragmentation
                 go.AddComponent<MeshFilter>().sharedMesh = tri;
                 go.AddComponent<MeshRenderer>().sharedMaterial = mats[k];
             }
-            foreach (Bits.Kind kind in Enum.GetValues(typeof(Bits.Kind))) Bits.Emit(e.position + e.forward * 60f, Vector3.zero, 0f, 1, 0.0005f, 0.0005f, kind, 0f, 0f);
+            for (int kind = 0; kind < Bits.Kinds; kind++) Bits.Emit(e.position + e.forward * 60f, Vector3.zero, 0f, 1, 0.0005f, 0.0005f, (Bits.Kind)kind, 0f, 0f);
             Sparks.Emit(e.position + e.forward * 600f, Vector3.zero, Vector3.up, 1);
             return holder;
         }
@@ -452,6 +452,7 @@ namespace Fragmentation
                 // (a piece just come off a craft that was being watched is a wreck from the first)
                 w = new Wreck { vessel = v, since = now, name = v.GetDisplayName(), wrecked = ArmedAlready(v) };
                 wrecks[v] = w;
+                Paints.Warm(v);             // (its parts' paint read for their shreds, those not read yet: see Paints)
                 Reach(w, true);
                 if (!quiet) Note("watching " + w.name + " (" + v.parts.Count + " parts, " + v.srf_velocity.magnitude.ToString("F0") + " m/s, " + v.radarAltitude.ToString("F0") + " m up)");
             }

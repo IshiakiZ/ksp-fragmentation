@@ -320,7 +320,9 @@ namespace Fragmentation
                         if (spawnBurstSpeed > 0f) { bv = v * 0.8f + away * (spawnBurstSpeed * Random.Range(0.4f, 0.9f)) + up * 3f; spread = 0.2f * spawnBurstSpeed; }
                         else { bv = v * 0.8f + away * Random.Range(4f, 14f) + up * 3f; spread = 9f; }
                         burning = 0.35f; smoke = 0.5f;
-                        kind = Random.value < 0.5f ? Bits.Kind.Burnt : Bits.Kind.Metal;
+                        // (since 2026-11-19 a share of its shreds its own paint, outside, as the Morpheus lander's were: see Bits.Skin)
+                        if (Bits.TestPaint == 1f) kind = Random.value < 0.5f ? Bits.Kind.Burnt : Bits.Kind.Metal;
+                        else { float roll = Random.value; kind = roll < 0.4f ? Bits.Kind.Burnt : roll < 0.7f ? Bits.Kind.Paint : Bits.Kind.Metal; }
                         break;
                     case Torn.Crushed:
                         n = Mathf.Clamp(Mathf.RoundToInt(cell.area * 12f), 1, 7);
@@ -336,9 +338,15 @@ namespace Fragmentation
                         n = Mathf.Clamp(Mathf.RoundToInt(cell.area * 10f), 1, 6);
                         bv = v + up * 2f;
                         spread = 3f + 4f * spawnViolence; smoke = spawnHeat > 0f ? 0.4f : 0.07f; burning = spawnBurning * 0.4f;
-                        kind = spawnHeat > 0f && Random.value < 0.5f ? Bits.Kind.Burnt : Bits.Kind.Metal;
+                        if (Bits.TestPaint == 1f) kind = spawnHeat > 0f && Random.value < 0.5f ? Bits.Kind.Burnt : Bits.Kind.Metal;
+                        else { float roll = Random.value; kind = spawnHeat > 0f && roll < 0.45f ? Bits.Kind.Burnt : roll < (spawnHeat > 0f ? 0.7f : 0.45f) ? Bits.Kind.Paint : Bits.Kind.Metal; }
                         break;
                 }
+                // (A shred of paint is the colour of the skin it tore from, since 2026-11-19: white off a white tank, orange off an
+                // orange one, see Hull.SkinAt and Bits.Skin; as light as the paint itself, as the torn panels in NASA's and the NTSB's
+                // photographs are the lightest things on the ground. Until the part's texture is read, the grey it always was.)
+                if (kind == Bits.Kind.Paint && Bits.TestPaint != 1f && hull.SkinAt(ci, out Color skin))
+                    kind = Bits.Skin(skin);
                 if (piece) n = Mathf.Max(1, n / 2);
                 Bits.Emit(at, bv, spread, n, scale * 0.15f, scale, kind, burning, smoke, why == Torn.Ground ? 1.5f : 3f, grip);
                 // (a spacecraft's skin is lagged with foil blankets: shreds of it among the bits; foil and bolts slide on soil as shreds

@@ -131,6 +131,7 @@ namespace Fragmentation
                 Material m = mats[Mathf.Min(plan.slotSub[s], mats.Length - 1)];
                 slotMats[s] = m;
                 slotColours[s] = m != null && m.HasProperty(ColorId) ? m.GetColor(ColorId) : Color.white;
+                Paints.Ask(m);              // (its paint read for its shreds, if it was not when the craft was first flown: see Paints)
             }
             foreach (MeshFilter f in filters) { MeshRenderer r = f.GetComponent<MeshRenderer>(); if (r != null) hiddenRenderers.Add(r); }
             pos = new Vector3[plan.p.Length];
@@ -1316,6 +1317,26 @@ namespace Fragmentation
         }
 
         public bool Burnt(int cell) => burnt[cell];
+
+        /// <summary>
+        /// (Since 2026-11-19.) The colour of a panel's paint, outside, at one of its triangles chosen by chance: its material's texture
+        /// there as Paints read it, times the material's own colour. False: not read (yet). For the shreds it throws, see Bits.Skin.
+        /// </summary>
+        public bool SkinAt(int cell, out Color c)
+        {
+            c = Color.white;
+            if (plan == null || cell < 0 || cell >= plan.cells.Length) return false;
+            int[] tris = plan.cells[cell].tris;
+            if (tris == null || tris.Length == 0) return false;
+            int t = tris[UnityEngine.Random.Range(0, tris.Length)];
+            int s = t < plan.slot.Length ? plan.slot[t] : -1;
+            if (s < 0 || s >= slotMats.Length || 3 * t + 2 >= plan.uv.Length) return false;
+            Vector2 uv = (plan.uv[3 * t] + plan.uv[3 * t + 1] + plan.uv[3 * t + 2]) / 3f;
+            if (!Paints.At(slotMats[s], uv, out Color paint)) return false;
+            Color tint = slotColours[s];
+            c = new Color(paint.r * tint.r, paint.g * tint.g, paint.b * tint.b, 1f);
+            return true;
+        }
 
         /// <summary>How deep the deepest grinding has gone (metres into the part).</summary>
         public float GroundDepth { get { float d = 0f; foreach (Crush c in crushes) if (c.zone <= 0.05f) d = Mathf.Max(d, c.depth); return d; } }

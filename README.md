@@ -26,7 +26,8 @@ is not needed, but the leaks, the fires and the smoke of every piece are drawn o
   as a pool where it is alight (0.3.0).
 * **Cockpits and pods too** (0.5.0): as strong as a capsule of their weight, not as the game's crash tolerance for them has
   it; crushed in, torn open or burst by their own fuel, they break up, and their crew with them, as the game kills a crew.
-* **The pieces are the parts' own:** torn panels, rings out of torn tanks, engines' bells.
+* **The pieces are the parts' own:** torn panels, rings out of torn tanks, engines' bells, and shreds of skin in the paint
+  they tore from, white off a white tank and black off its bands.
 * **In orbit too:** a craft that clips another tears at what it hits.
 * **On the sea** (0.3.0): a part striking the water takes a blow from the water it throws up, broadside nearly as on soil,
   nose first far less; the pieces sink slowly.
